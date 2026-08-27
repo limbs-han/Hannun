@@ -24,7 +24,7 @@
   - flake8(E9,F63,F7,F82,E501 / 110자) 검사 추가. 테스트 21개 그대로 통과.
 - **팀 저장소 연동** — `lab.ssafy.com/s15-bigdata-dist-sub1/S15P21E105`. 모노레포(루트에 `back/ data/ front/ infra/`)라 우리 코드를 전부 `data/` 아래로 이동. 브랜치 `data/feat/S15P21E105-99-json-gold`(원격에 `data/dev` 기준으로 이미 있었음).
   - 커밋·MR 규칙을 `docs/GIT_CONVENTION.md`로 정함. BE가 이미 쓰는 `type: 제목 (지라키)` 형식과 같게 맞춤. 루트 README의 지라 연동 규칙(브랜치명에 키 → 진행 중, MR에 `Closes 키` → 완료) 반영.
-  - 이 PC 전역 git 계정이 다른 사람이라 이 저장소에만 본인 계정 설정.
+  - 커밋 작성자를 다른 팀원 계정으로 잘못 넣어 푸시했다가 `jedabin` 으로 전부 정정 ([TS-006](TROUBLESHOOTING.md#ts-006)).
 - **서비스명 확정 → 패키지 이름 변경** — 임시명 Alzza 대신 서비스명 '한눈'이 정해져 패키지를 `alzza` → `hannun`으로 바꿈(`git mv`로 이력 유지). 명령은 `hannun-ingest`. 로컬 폴더 `Alzza/`는 저장소 루트라 그대로.
 
 ### 결정
