@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "article_v1.json",
   "title": "공통 기사 JSON v1",
-  "description": "과거 CSV 기사와 신규 크롤링 기사를 하나의 규격으로 표현하는 팀 내부 데이터 계약. BE 크롤링 문서 §3 기반이며 다음을 변경함 — (1) crawled_at 추가: HDFS dt=/hour= 파티션과 15분 신선도 검증의 기준 시각. (2) published_at·category null 허용: 실측 1,000건에서 각 90건이 null이라 필수로 두면 정상 기사가 DLQ로 빠짐. (3) source_type에 HTML 추가. Kafka 토픽 news.article.realtime.v1의 메시지 규격이고 Kafka key는 article_id를 쓴다.",
+  "description": "과거 CSV 기사와 신규 크롤링 기사를 하나의 규격으로 표현하는 팀 내부 데이터 계약. BE 크롤링 문서 §3 기반이며 다음을 변경함 — (1) crawled_at 추가: HDFS dt=/hour= 파티션과 15분 신선도 검증의 기준 시각. (2) category는 미제공 시 크롤러가 OTHER로 채워 항상 존재. (3) source_type에 HTML 추가. published_at은 필수 — 추출 실패 기사는 발행하지 않고 실패 처리한다. Kafka 토픽 news.article.realtime.v1의 메시지 규격이고 Kafka key는 article_id를 쓴다.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,7 +14,9 @@
     "url",
     "title",
     "content",
+    "category",
     "language",
+    "published_at",
     "crawled_at"
   ],
   "properties": {
@@ -63,8 +65,9 @@
       "description": "기자명. 없으면 null (빈 문자열 금지)"
     },
     "category": {
-      "type": ["string", "null"],
-      "description": "카테고리 코드 (예: POLITICS). 언론사가 제공하지 않으면 null — 실측 데이터 기준 약 9%가 미제공이라 필수로 두지 않는다"
+      "type": "string",
+      "minLength": 1,
+      "description": "카테고리 코드 (예: POLITICS). 언론사가 제공하지 않으면 크롤러가 OTHER로 채운다 — 실측 데이터 기준 약 9%가 미제공"
     },
     "category_str": {
       "type": ["string", "null"],
@@ -79,9 +82,9 @@
       "description": "기사 언어 코드 (예: ko)"
     },
     "published_at": {
-      "type": ["string", "null"],
+      "type": "string",
       "format": "date-time",
-      "description": "기사 발행 시각. RFC 3339 UTC(Z 종결)로 통일. 언론사가 제공하지 않으면 null — 시간 기준 처리는 crawled_at을 쓴다"
+      "description": "기사 발행 시각. RFC 3339 UTC(Z 종결)로 통일. 필수 — RSS pubDate 또는 기사 페이지 메타태그에서 추출하고, 둘 다 실패하면 발행하지 않고 실패 처리한다 (실측 기준 약 9%가 미제공이므로 실패율 모니터링 필요)"
     },
     "crawled_at": {
       "type": "string",
