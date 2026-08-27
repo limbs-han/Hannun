@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from schemas.models import validate_ds1_issue, validate_ds2_output
+from .schema import validate_ds1_issue, validate_ds2_output
 
 
 def enrich_dummy(issue_data: dict[str, Any]) -> dict[str, Any]:
@@ -58,10 +58,11 @@ def enrich_dummy(issue_data: dict[str, Any]) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    base_dir = Path(__file__).resolve().parent
+    ds_root = Path(__file__).resolve().parents[3]
+
     sample_path = (
-        base_dir
-        / "examples"
+        ds_root
+        / "samples"
         / "ds1_issue_output_v1.example.json"
     )
 
