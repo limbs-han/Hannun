@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "article_v1.json",
+  "title": "공통 기사 JSON v1",
+  "description": "과거 CSV 기사와 신규 크롤링 기사를 하나의 규격으로 표현하는 팀 내부 데이터 계약. BE 크롤링 문서 §3 기반이며 다음을 변경함 — (1) crawled_at 추가: HDFS dt=/hour= 파티션과 15분 신선도 검증의 기준 시각. (2) published_at·category null 허용: 실측 1,000건에서 각 90건이 null이라 필수로 두면 정상 기사가 DLQ로 빠짐. (3) source_type에 HTML 추가. Kafka 토픽 news.article.realtime.v1의 메시지 규격이고 Kafka key는 article_id를 쓴다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "article_id",
+    "publisher_id",
+    "publisher_name",
+    "source_type",
+    "url",
+    "title",
+    "content",
+    "language",
+    "crawled_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "공통 기사 JSON 스키마 버전"
+    },
+    "article_id": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "기사 고유 식별자. SHA-256(publisher_id + \"|\" + 정규화된 url)의 소문자 hex에 'sha256:' 접두어. URL 정규화: 쿼리스트링(?...)과 프래그먼트(#...)를 제거한 뒤 해시한다 — utm 파라미터 차이로 같은 기사가 다른 ID를 받는 것을 막기 위함"
+    },
+    "publisher_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "내부에서 정의한 언론사 코드 (예: yonhap)"
+    },
+    "publisher_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "언론사명 (예: 연합뉴스)"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["DATASET", "RSS", "HTML"],
+      "description": "수집 출처. DATASET=SSAFY 과거 뉴스 CSV, RSS=RSS에서 발견해 크롤링한 신규 기사, HTML=RSS 외 경로(사이트맵 등)로 발견해 크롤링한 기사"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "기사 원문 URL. 저장은 원본 그대로 하되 article_id 해시에는 정규화본을 쓴다"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "기사 제목"
+    },
+    "content": {
+      "type": "string",
+      "minLength": 1,
+      "description": "기사 본문. 크롤러가 100자 미만은 발행 전에 폐기하므로 정상 유통 메시지는 100자 이상이지만, 과거 CSV 반입분이 있어 스키마 최소 길이는 1로 둔다"
+    },
+    "author": {
+      "type": ["string", "null"],
+      "description": "기자명. 없으면 null (빈 문자열 금지)"
+    },
+    "category": {
+      "type": ["string", "null"],
+      "description": "카테고리 코드 (예: POLITICS). 언론사가 제공하지 않으면 null — 실측 데이터 기준 약 9%가 미제공이라 필수로 두지 않는다"
+    },
+    "category_str": {
+      "type": ["string", "null"],
+      "description": "언론사 원문 카테고리 전체 경로 (예: 정치>행정). 없으면 null"
+    },
+    "thumbnail_url": {
+      "type": ["string", "null"],
+      "description": "대표 이미지 URL. 없으면 null"
+    },
+    "language": {
+      "type": "string",
+      "description": "기사 언어 코드 (예: ko)"
+    },
+    "published_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "기사 발행 시각. RFC 3339 UTC(Z 종결)로 통일. 언론사가 제공하지 않으면 null — 시간 기준 처리는 crawled_at을 쓴다"
+    },
+    "crawled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "수집(크롤링) 완료 시각. RFC 3339 UTC(Z 종결). HDFS dt=/hour= 파티션과 신선도 측정의 기준 시각이므로 필수"
+    }
+  }
+}
