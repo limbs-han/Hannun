@@ -14,9 +14,10 @@ master
 
 우리 작업은 전부 `data/` 아래에서 한다. `data/dev` 와 `data/master` 에는 직접 푸시하지 않는다.
 
-`data/` 안은 사람별 폴더(`de/`, `ds1/`, `ds2/`)다. 자기 폴더는 자유롭게 고치되, 다른
-사람 폴더와 공통 문서(`data/README.md`, `data/docs/`)를 건드리는 MR 은 그 소유자를
-리뷰어로 넣는다.
+`data/` 안은 `de/`(DE)와 `ds/`(DS1·DS2 공용)로 나뉜다. `ds/` 안에서는 모듈 단위로
+소유자가 있고, 개인 문서는 `ds/docs/ds1/`, `ds/docs/ds2/` 에 둔다. 자기 것은 자유롭게
+고치되, 다른 사람 모듈이나 공통 파일(`data/README.md`, `data/docs/`, `ds/README.md`,
+`ds/pyproject.toml`)을 건드리는 MR 은 그 소유자를 리뷰어로 넣는다.
 
 ## 브랜치 이름
 

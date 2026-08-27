@@ -5,8 +5,9 @@
 
 ## 저장소 구조
 
-팀 저장소는 모노레포고 데이터 파트는 사람별 폴더(`de/`, `ds1/`, `ds2/`)로 나뉜다.
-이 디렉토리(`data/ds1/`)가 DS1 파이썬 프로젝트 루트고, 아래 경로는 전부 여기 기준이다.
+팀 저장소는 모노레포고 DS1·DS2 는 `data/ds/` 에서 파이썬 패키지 `hannun` 을 같이 만든다.
+이 문서는 DS1 이 맡은 모듈에 적용하는 규칙이고 `ds/docs/ds1/` 에 둔다. 아래 경로는 전부
+프로젝트 루트 `data/ds/` 기준이다.
 
 ```
 src/hannun/<step>/     ingest, dedup, embedding, clustering, quality — 파이프라인 순서대로 패키지 하나씩
@@ -16,7 +17,7 @@ src/hannun/<step>/     ingest, dedup, embedding, clustering, quality — 파이�
 tests/test_<모듈>.py   모듈과 1:1
 scripts/               한 번 돌리는 것. 패키지를 import 해서 쓰고, 로직을 복사해 오지 않는다
 samples/               커밋한다. gold/ 처럼 코드가 만드는 것은 커밋하지 않는다
-docs/                  WORKLOG, TROUBLESHOOTING, tickets/<Jira 키>.md
+docs/ds1/, docs/ds2/   개인 문서 — WORKLOG, TROUBLESHOOTING, tickets/<Jira 키>.md, 이 파일
 ```
 
 `utils.py`, `helpers.py`, `common.py` 는 만들지 않는다. 갈 곳이 없어 보이는 함수는
@@ -65,7 +66,7 @@ dataclass 는 두 용도로만 쓴다. 단계의 결과(`IngestStats`)와 단계
 
 임계값과 파라미터는 코드에 숫자로 박지 않고 설정 dataclass 로 받는다. 골드셋으로
 바꿔가며 돌려야 하는 값이고, 그 값을 왜 골랐는지는 코드가 아니라
-`docs/tickets/` 에 적는다.
+`docs/ds1/tickets/` 에 적는다.
 
 ```python
 @dataclass
@@ -97,7 +98,7 @@ def _iter_jsonl(f):
 ## docstring
 
 한 줄 요약. 더 할 말이 있으면 빈 줄을 두고 문장으로 이어 쓴다. 불릿, 표, 흐름도는
-넣지 않는다. 그런 건 `docs/tickets/` 의 몫이다.
+넣지 않는다. 그런 건 `docs/ds1/tickets/` 의 몫이다.
 
 인자 설명은 이름만으로 뜻이 안 드러날 때만 쓴다. 대개 단위 문제다 — UTC 인지
 KST 인지, 글자 수인지 토큰 수인지, 문자열인지 date 인지.

@@ -5,11 +5,13 @@
 계약 하나에 파일 하나. 파일 이름은 `<만드는 쪽>-to-<읽는 쪽>-<무엇>.md`.
 
 ```
-de-to-ds1-article-json.md      공통 기사 JSON — BE 문서 §3 를 그대로 따르므로 링크만
-ds1-to-ds2-issue-table.md      이슈 테이블 (issue_id, 멤버 기사, 중심 벡터, 키워드 …)
-ds1-to-be-issue-serving.md     BE 서빙 DB 에 넣는 이슈·기사 컬럼과 전달 방식
-ds2-to-be-viewpoint.md         관점 그룹
+de-to-ds-article-json.md       공통 기사 JSON — BE 문서 §3 를 그대로 따르므로 링크만
+ds-to-be-issue-serving.md      BE 서빙 DB 에 넣는 이슈·기사 컬럼과 전달 방식 (DS1)
+ds-to-be-viewpoint.md          관점 그룹 (DS2)
 ```
+
+DS1 과 DS2 사이는 같은 패키지(`ds/src/hannun`) 안이라 여기 쓰지 않고 코드의 스키마
+상수로 맞춘다.
 
 각 문서에는 컬럼 이름·타입·null 여부·의미, 파일 위치와 포맷, 갱신 주기, 바꿀 때
 누구에게 알릴지를 적는다. 계약을 바꾸는 MR 에는 읽는 쪽을 리뷰어로 넣는다.
