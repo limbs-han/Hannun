@@ -27,9 +27,12 @@
   - 커밋 작성자를 다른 팀원 계정으로 잘못 넣어 푸시했다가 `jedabin` 으로 전부 정정 ([TS-006](TROUBLESHOOTING.md#ts-006)).
 - **서비스명 확정 → 패키지 이름 변경** — 임시명 Alzza 대신 서비스명 '한눈'이 정해져 패키지를 `alzza` → `hannun`으로 바꿈(`git mv`로 이력 유지). 명령은 `hannun-ingest`. 로컬 폴더 `Alzza/`는 저장소 루트라 그대로.
 
+- **데이터 파트를 사람별 폴더로 분리** — `data/` 바로 아래에 pyproject 가 있어 파트 전체가 DS1 프로젝트처럼 보였다. `data/ds1/`로 옮기고 `de/`, `ds2/`는 각자 만들게 둠. 개인 기록(WORKLOG·TROUBLESHOOTING·tickets)은 `ds1/docs/`로, 파트 공통은 `data/docs/`(GIT_CONVENTION, contracts/)에 남김.
+
 ### 결정
 | 결정 | 이유 |
 |---|---|
+| DS1·DS2 는 코드를 import 하지 않고 데이터 파일 + `data/docs/contracts/` 계약으로만 잇는다 | 폴더를 사람별로 나누면서 패키지 의존성이 생기면 스키마 바뀔 때마다 두 곳을 맞춰야 함. 계약 문서는 BE 에 줄 것과 같은 문서라 이중 작업도 아님 |
 | 패키지 영문명 `hannun` | '한눈'은 식별자로 못 쓰고, 국어의 로마자 표기법(한=han, 눈=nun)을 따르면 사람마다 다르게 적을 여지가 없음 |
 | 우리 데이터 폴더 `data/samples`·`data/gold` → `samples/`·`gold/` | 모노레포 파트 디렉토리 `data/`와 이름이 겹쳐 `data/data/...`가 됨 ([TS-005](TROUBLESHOOTING.md#ts-005)) |
 | 전처리(보일러플레이트 제거 등)는 DS1 소유 | 팀 결정. BE 문서의 "DE 실시간 전처리" 범위는 DE와 확인 필요 |
