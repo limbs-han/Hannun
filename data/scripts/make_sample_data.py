@@ -6,7 +6,7 @@
 import json
 from pathlib import Path
 
-from alzza.ingest.schema import expected_article_id
+from hannun.ingest.schema import expected_article_id
 
 OUT = Path(__file__).resolve().parents[1] / "samples" / "articles_sample.jsonl"
 

@@ -2,7 +2,7 @@
 
 데이터 수집과 분산 처리 파이프라인을 관리합니다.
 
-## DS1 파이프라인 (`src/alzza`)
+## DS1 파이프라인 (`src/hannun`)
 
 뉴스 중복 제거, 임베딩, 이슈 군집화를 맡는 파이썬 패키지다. 이 디렉토리가 파이썬
 프로젝트 루트다.
@@ -21,7 +21,7 @@ STEP 4  quality     노이즈 구제 · 어그로 판정 · 화제성 점수    
 ### 디렉토리
 
 ```
-src/alzza/ingest/    STEP 0 — schema.py(검증) reader.py(파일 읽기) gold.py(저장소) pipeline.py cli.py
+src/hannun/ingest/   STEP 0 — schema.py(검증) reader.py(파일 읽기) gold.py(저장소) pipeline.py cli.py
 scripts/             보조 스크립트 (샘플 데이터 생성 등)
 tests/               pytest
 samples/             커밋되는 샘플 입력
@@ -44,13 +44,13 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest tests/ -v
 
 # 공통 기사 JSON → Gold
-.\.venv\Scripts\alzza-ingest.exe --input samples\articles_sample.jsonl --gold-root gold -v
+.\.venv\Scripts\hannun-ingest.exe --input samples\articles_sample.jsonl --gold-root gold -v
 ```
 
 Gold 읽기:
 
 ```python
-from alzza.ingest import GoldStore
+from hannun.ingest import GoldStore
 df = GoldStore("gold").read(start_date="2026-08-20", end_date="2026-08-21")
 ```
 

@@ -9,7 +9,7 @@
 전부 여기 기준이다.
 
 ```
-src/alzza/<step>/      ingest, dedup, embedding, clustering, quality — 파이프라인 순서대로 패키지 하나씩
+src/hannun/<step>/     ingest, dedup, embedding, clustering, quality — 파이프라인 순서대로 패키지 하나씩
     <일>.py            순수 로직. 파일 하나가 일 하나 (schema, reader, gold …)
     pipeline.py        그 단계의 입력과 출력을 잇는 함수 하나 (ingest, dedup …)
     cli.py             명령이 필요한 단계만. 인자 파싱과 출력 외에 로직을 두지 않는다
@@ -42,7 +42,7 @@ import 는 표준 라이브러리, 서드파티, 우리 패키지 순으로 빈 
 
 ```python
 """Gold 저장소 — 검증이 끝난 기사를 parquet 으로 쌓고 읽는다."""
-"""alzza-ingest — 공통 기사 JSON 을 검증해 Gold 에 적재하는 명령."""
+"""hannun-ingest — 공통 기사 JSON 을 검증해 Gold 에 적재하는 명령."""
 ```
 
 ## 이름

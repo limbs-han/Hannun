@@ -3,7 +3,7 @@ from datetime import timezone
 import pytest
 from pydantic import ValidationError
 
-from alzza.ingest.schema import CommonArticle, SourceType, article_id_matches, expected_article_id
+from hannun.ingest.schema import CommonArticle, SourceType, article_id_matches, expected_article_id
 
 
 def base(**overrides) -> dict:

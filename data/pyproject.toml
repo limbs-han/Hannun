@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "alzza"
+name = "hannun"
 version = "0.1.0"
-description = "Alzza DS1 pipeline: news dedup, embedding, clustering"
+description = "Hannun DS1 pipeline: news dedup, embedding, clustering"
 requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.2",
@@ -17,7 +17,7 @@ dependencies = [
 dev = ["pytest>=8", "flake8>=7"]
 
 [project.scripts]
-alzza-ingest = "alzza.ingest.cli:main"
+hannun-ingest = "hannun.ingest.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

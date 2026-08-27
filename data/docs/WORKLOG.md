@@ -12,7 +12,7 @@
   - `published_at`은 **발행 시각**(RFC 3339 UTC)으로 확정. 크롤링 시각 필드는 없음.
   - API 응답 필드에서 DS1 산출물을 역산: `issueId`(안정적이어야 함), `pressCount`, `articleCount`, `score`(화제성 — 설계 문서에 없던 항목), 이슈 단위 `category`, `firstReportedAt/lastReportedAt`.
   - 상세는 [tickets/S15P21E105-99.md](tickets/S15P21E105-99.md) "BE 문서에서 확인한 것" 절.
-- **프로젝트 골격 생성**: `src/alzza` 패키지(src 레이아웃), pyproject, venv(Python 3.14), pytest.
+- **프로젝트 골격 생성**: `src/hannun` 패키지(src 레이아웃), pyproject, venv(Python 3.14), pytest.
 - **S15P21E105-99 공통 기사 JSON 입력 변환·Gold 저장 구현**
   - `schema.py` pydantic 검증 / `reader.py` JSON·JSONL·디렉토리 읽기 / `gold.py` parquet 파티션 저장소 / `pipeline.py` / `cli.py`
   - 샘플 데이터 10건(정상 5 + 배치 내 중복 1 + 리젝트 4) 생성 스크립트, 테스트 21개 통과.
@@ -25,10 +25,12 @@
 - **팀 저장소 연동** — `lab.ssafy.com/s15-bigdata-dist-sub1/S15P21E105`. 모노레포(루트에 `back/ data/ front/ infra/`)라 우리 코드를 전부 `data/` 아래로 이동. 브랜치 `data/feat/S15P21E105-99-json-gold`(원격에 `data/dev` 기준으로 이미 있었음).
   - 커밋·MR 규칙을 `docs/GIT_CONVENTION.md`로 정함. BE가 이미 쓰는 `type: 제목 (지라키)` 형식과 같게 맞춤. 루트 README의 지라 연동 규칙(브랜치명에 키 → 진행 중, MR에 `Closes 키` → 완료) 반영.
   - 이 PC 전역 git 계정이 다른 사람이라 이 저장소에만 본인 계정 설정.
+- **서비스명 확정 → 패키지 이름 변경** — 임시명 Alzza 대신 서비스명 '한눈'이 정해져 패키지를 `alzza` → `hannun`으로 바꿈(`git mv`로 이력 유지). 명령은 `hannun-ingest`. 로컬 폴더 `Alzza/`는 저장소 루트라 그대로.
 
 ### 결정
 | 결정 | 이유 |
 |---|---|
+| 패키지 영문명 `hannun` | '한눈'은 식별자로 못 쓰고, 국어의 로마자 표기법(한=han, 눈=nun)을 따르면 사람마다 다르게 적을 여지가 없음 |
 | 우리 데이터 폴더 `data/samples`·`data/gold` → `samples/`·`gold/` | 모노레포 파트 디렉토리 `data/`와 이름이 겹쳐 `data/data/...`가 됨 ([TS-005](TROUBLESHOOTING.md#ts-005)) |
 | 전처리(보일러플레이트 제거 등)는 DS1 소유 | 팀 결정. BE 문서의 "DE 실시간 전처리" 범위는 DE와 확인 필요 |
 | Gold = "검증·타입 정규화·중복 제거가 끝난 기사 테이블", 원문 `content` 보존 | 전처리는 티켓 100. Gold를 두 번 만들지 않기 위해 원문을 여기 두고 정제 컬럼은 나중에 추가 |

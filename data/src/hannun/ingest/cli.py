@@ -1,4 +1,4 @@
-"""alzza-ingest — 공통 기사 JSON 을 검증해 Gold 에 적재하는 명령."""
+"""hannun-ingest — 공통 기사 JSON 을 검증해 Gold 에 적재하는 명령."""
 
 import argparse
 import json

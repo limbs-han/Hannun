@@ -1,7 +1,7 @@
 import json
 
-from alzza.ingest import GoldStore, ingest
-from alzza.ingest.schema import expected_article_id
+from hannun.ingest import GoldStore, ingest
+from hannun.ingest.schema import expected_article_id
 
 
 def test_ingest_sample_stats(tmp_path, sample_path):
