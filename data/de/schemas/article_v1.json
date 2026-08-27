@@ -84,7 +84,7 @@
     "published_at": {
       "type": "string",
       "format": "date-time",
-      "description": "기사 발행 시각. RFC 3339 UTC(Z 종결)로 통일. 필수 — RSS pubDate 또는 기사 페이지 메타태그에서 추출하고, 둘 다 실패하면 발행하지 않고 실패 처리한다 (실측 기준 약 9%가 미제공이므로 실패율 모니터링 필요)"
+      "description": "기사 발행 시각. RFC 3339 UTC(Z 종결)로 통일. 필수 — RSS pubDate 또는 기사 페이지 메타태그에서 추출하고, 둘 다 없으면 기사가 아닌 페이지(섹션 인덱스 등)일 가능성이 높으므로 발행하지 않고 버린다"
     },
     "crawled_at": {
       "type": "string",
