@@ -1,0 +1,125 @@
+{
+  "issue_cluster_id": "issue_20260824_0004",
+  "event_name": "李, 최태원과 비공개 만찬…반도체 메가투자 논의",
+  "keywords": [
+    "dummy-keyword"
+  ],
+  "fact_summary": [
+    "[DUMMY] 공통 사실 요약 1",
+    "[DUMMY] 공통 사실 요약 2",
+    "[DUMMY] 공통 사실 요약 3"
+  ],
+  "articles": [
+    {
+      "article_id": "sha256:9d7284072be7479b",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:64688a71c36d1ed9",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:aeab79fdea2b3684",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:54f532628c78825e",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:9d42451f75f41b4f",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:7724b915f67a7ea0",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:ef6ff20f8b6a6549",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:b89221312849c2da",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:fb0baa8273f4dfc9",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:d06cfc314d428d5e",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:c7d6713a90cdb910",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:59c9411fa8566b70",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:61f9ab8169dd4822",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:d33195f19fae6993",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:2f479699f326e44c",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:a410226650297cb6",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:1ee8e512cf48ffb6",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:1dcb40c72d30adc7",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:52b38d3c9165e1f4",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:1b8bef275028b3ff",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:17c1957c59b71e9b",
+      "stance": "neutral",
+      "stance_confidence": null
+    },
+    {
+      "article_id": "sha256:1935969bf0c100a0",
+      "stance": "neutral",
+      "stance_confidence": null
+    }
+  ],
+  "viewpoint_analysis": "[DUMMY] 이슈 내 기사들의 관점 분석 결과"
+}
