@@ -9,7 +9,7 @@ DE 가 만들고 DS 가 읽는 기사 한 건의 규격. 스키마 원본은 DE 
 | 만드는 쪽 | DE (사지한). 신규 기사는 크롤러가, 과거 기사는 CSV 변환기가 만든다 |
 | 읽는 쪽 | DS1 (제다빈) `hannun-ingest` → Gold. DS2 는 Gold 를 읽는다 |
 | 형태 | JSON 객체 1건. Kafka `news.article.realtime.v1` 메시지이자 HDFS 익스포트의 한 줄(JSONL) |
-| DS 가 받는 경로 | **미정** — Kafka 직접 구독인지 HDFS 파일 읽기인지, 파일이면 경로·파티션·주기. DS 코드는 지금 JSON/JSONL 파일만 읽는다 |
+| DS 가 받는 경로 | **HDFS 에 쌓인 파일을 읽는다**(2026-08-28 DE 확인). 파티션은 `crawled_at` 기준 `dt=YYYY-MM-DD/hour=HH`. **정해야 할 것**: 루트 경로, 파일 형식(JSONL 로 가정), 파일이 닫히는 주기(15분?)와 "이 파일은 다 썼다"를 DS 가 아는 방법. DS 코드는 JSON/JSONL 파일을 읽으므로 경로를 `pyarrow.fs.HadoopFileSystem` 이나 마운트로 바꾸면 된다 |
 | 바꿀 때 | 이 문서와 `article_v1.json` 을 같은 MR 에서 고치고 DS1 을 리뷰어로 넣는다 |
 
 ## 필드
