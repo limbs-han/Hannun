@@ -1,21 +1,33 @@
-"""수집→본문 추출→Kafka 발행 파이프라인 (S15P21E105-62).
+"""수집→본문 추출→Kafka 발행 파이프라인 (S15P21E105-62, -63).
 
 15분 배치 1회분: 신규 기사 목록을 만들고, 본문을 추출해 8필드 기사 JSON 으로
 조립한 뒤 Kafka 토픽에 발행한다. published 를 끝내 못 구한 기사는 비기사
 페이지일 가능성이 높아 발행하지 않는다.
+
+수집 예절(-63): 도메인별 1초 간격을 지키고 robots.txt 가 금지한 URL 은 접속하지
+않는다. 기사 하나의 실패는 그 기사만 스킵하고 로그를 남긴다.
 """
 
 import json
+import logging
 import os
 import sys
 
 from confluent_kafka import Producer
 
 from crawler.extractor import fetch, parse
-from crawler.rss_collector import collect_new
+from crawler.politeness import RateLimiter, RobotsGate
+from crawler.rss_collector import USER_AGENT, collect_new
+
+logger = logging.getLogger(__name__)
 
 BROKER = os.environ.get("KAFKA_BROKER", "localhost:29092")
 TOPIC = os.environ.get("ARTICLE_TOPIC", "news.article.realtime.v1")
+
+
+def _on_delivery(err, msg):
+    if err is not None:
+        logger.warning("Kafka 발행 실패: %s (key=%s)", err, msg.key())
 
 
 def build_article(item, parsed):
@@ -32,33 +44,51 @@ def build_article(item, parsed):
     }
 
 
-def run(db_path, producer=None, fetch_fn=fetch, feeds=None):
+def run(db_path, producer=None, fetch_fn=fetch, feeds=None, limiter=None, robots=None):
     """배치 1회 실행. (발행 건수, 스킵 건수) 를 돌려준다."""
     kwargs = {"feeds": feeds} if feeds is not None else {}
     items = collect_new(db_path, **kwargs)
     if producer is None:
         producer = Producer({"bootstrap.servers": BROKER})
+    limiter = limiter or RateLimiter()
+    robots = robots or RobotsGate(USER_AGENT)
     sent = skipped = 0
     for item in items:
-        parsed = parse(fetch_fn(item["link"]), url=item["link"])
+        link = item["link"]
+        try:
+            if not robots.allowed(link):
+                logger.warning("robots.txt 차단, 스킵: %s", link)
+                skipped += 1
+                continue
+            limiter.wait(link)
+            parsed = parse(fetch_fn(link), url=link)
+        except Exception:
+            logger.warning("기사 처리 실패, 스킵: %s", link, exc_info=True)
+            skipped += 1
+            continue
         if not parsed:
-            skipped += 1  # 본문 없음·100자 미만. 실패 로그 정책은 -63
+            logger.warning("본문 없음 또는 100자 미만, 스킵: %s", link)
+            skipped += 1
             continue
         message = build_article(item, parsed)
         if not message["published"]:
-            skipped += 1  # 발행시각 없음 = 비기사 페이지로 간주
+            logger.warning("발행시각 없음(비기사 페이지 가능성), 스킵: %s", link)
+            skipped += 1
             continue
         producer.produce(
             TOPIC,
             key=message["link"],
             value=json.dumps(message, ensure_ascii=False),
+            on_delivery=_on_delivery,
         )
+        producer.poll(0)
         sent += 1
     producer.flush()
     return sent, skipped
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     db = sys.argv[1] if len(sys.argv) > 1 else "seen.sqlite"
     sent, skipped = run(db)
     print(f"발행 {sent}건, 스킵 {skipped}건")
