@@ -126,8 +126,8 @@
     },
     {
       "id": 6,
-      "title": "읽기 API 평균 응답시간 (/api/articles)",
-      "description": "L1(Caffeine) 히트가 많을수록 이 값이 낮게 유지됨.",
+      "title": "읽기 API 평균 응답시간 (/api/issues)",
+      "description": "Redis(issueFeed/issueDetail) 히트가 많을수록 이 값이 낮게 유지됨.",
       "type": "graph",
       "datasource": "Prometheus",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
@@ -137,7 +137,7 @@
       "nullPointMode": "connected",
       "targets": [
         {
-          "expr": "rate(http_server_requests_seconds_sum{uri=~\"/api/articles.*\"}[5m]) / rate(http_server_requests_seconds_count{uri=~\"/api/articles.*\"}[5m])",
+          "expr": "rate(http_server_requests_seconds_sum{uri=~\"/api/issues.*\"}[5m]) / rate(http_server_requests_seconds_count{uri=~\"/api/issues.*\"}[5m])",
           "legendFormat": "{{uri}}",
           "refId": "A"
         }
@@ -168,8 +168,8 @@
     },
     {
       "id": 10,
-      "title": "L1 캐시(Caffeine) 히트율",
-      "description": "요청이 Redis(L2)까지도 안 가고 JVM 로컬 캐시에서 바로 끝난 비율. 이게 높을수록 응답시간/Redis 부하 둘 다 유리함.",
+      "title": "캐시별 히트율 (issueFeed / issueDetail)",
+      "description": "Spring Cache 추상화가 캐시 이름별로 노출하는 히트율. 캐시가 새로 추가돼도 쿼리 수정 없이 자동으로 잡힘.",
       "type": "graph",
       "datasource": "Prometheus",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
@@ -179,8 +179,8 @@
       "nullPointMode": "connected",
       "targets": [
         {
-          "expr": "sum(rate(cache_gets_total{cache=\"articleL1\",result=\"hit\"}[5m])) / sum(rate(cache_gets_total{cache=\"articleL1\"}[5m]))",
-          "legendFormat": "hit ratio",
+          "expr": "sum(rate(cache_gets_total{result=\"hit\"}[5m])) by (cache) / sum(rate(cache_gets_total[5m])) by (cache)",
+          "legendFormat": "{{cache}}",
           "refId": "A"
         }
       ],
