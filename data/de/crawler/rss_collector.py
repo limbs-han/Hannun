@@ -51,11 +51,14 @@ def collect_new(db_path, feeds=FEEDS):
                 ).rowcount
                 if not inserted:
                     continue  # 이미 본 기사
+                tags = [t.get("term") for t in entry.get("tags", []) if t.get("term")]
                 items.append({
                     "company": feed["company"],
                     "title": title,
                     "link": link,
                     "published": _published_kst(entry),
+                    # RSS category 태그 원문. 코드 매핑은 적재 변환(-66) 몫
+                    "category_str": tags[0] if tags else None,
                 })
     conn.commit()
     conn.close()

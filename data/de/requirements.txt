@@ -1,4 +1,6 @@
 feedparser
+trafilatura
+confluent-kafka
 
 # 개발용
 pytest
