@@ -1,0 +1,4 @@
+feedparser
+
+# 개발용
+pytest
