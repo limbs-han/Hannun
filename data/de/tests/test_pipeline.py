@@ -17,10 +17,23 @@ class FakeProducer:
     def __init__(self):
         self.messages = []
 
-    def produce(self, topic, key, value):
+    def produce(self, topic, key, value, on_delivery=None):
         self.messages.append((topic, key, json.loads(value)))
 
+    def poll(self, timeout):
+        pass
+
     def flush(self):
+        pass
+
+
+class AllowAll:
+    def allowed(self, url):
+        return True
+
+
+class NoWait:
+    def wait(self, url):
         pass
 
 
@@ -31,6 +44,8 @@ def test_run_publishes_8_field_article(tmp_path):
         producer=producer,
         fetch_fn=lambda url: ARTICLE_HTML,
         feeds=FEEDS,
+        limiter=NoWait(),
+        robots=AllowAll(),
     )
     assert (sent, skipped) == (1, 0)
 
@@ -54,6 +69,8 @@ def test_run_skips_unparsable_page(tmp_path):
         producer=producer,
         fetch_fn=lambda url: None,
         feeds=FEEDS,
+        limiter=NoWait(),
+        robots=AllowAll(),
     )
     assert (sent, skipped) == (0, 1)
     assert producer.messages == []

@@ -4,6 +4,7 @@
 으로 돌려준다. 본문 수집과 Kafka 발행은 다음 단계(S15P21E105-62) 몫이다.
 """
 
+import logging
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -11,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 import feedparser
 
 from crawler.feeds import FEEDS
+
+logger = logging.getLogger(__name__)
 
 USER_AGENT = "Mozilla/5.0 (compatible; HannunBot/0.1)"
 KST = timezone(timedelta(hours=9))
@@ -39,7 +42,8 @@ def collect_new(db_path, feeds=FEEDS):
             try:
                 parsed = feedparser.parse(rss_url, agent=USER_AGENT)
             except Exception:
-                # ponytail: 피드 단위 격리 최소형 — 실패 로그·재시도 정책은 -63
+                # 피드 하나의 실패가 전체 수집을 막지 않게 격리. 다음 배치가 자연 재시도
+                logger.warning("피드 파싱 실패, 스킵: %s %s", feed["company"], rss_url[:80])
                 continue
             for entry in parsed.entries:
                 link = (entry.get("link") or "").strip()
