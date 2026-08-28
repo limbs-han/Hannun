@@ -12,7 +12,12 @@ MIN_CONTENT_LEN = 100
 
 
 def fetch(url):
-    """URL 의 HTML 을 가져온다. 실패하면 None."""
+    """URL 의 HTML 을 가져온다. 실패하면 None.
+
+    ponytail: 일부 언론사(연합뉴스 확인됨)는 없는 기사도 HTTP 200 + 안내 페이지로
+    응답해서 상태코드로 못 거른다. RSS 가 방금 준 링크는 유효하다는 전제로 두고,
+    죽은 링크 감지가 필요해지면 -63 에서 제목 대조 등으로 보강.
+    """
     return trafilatura.fetch_url(url)
 
 
