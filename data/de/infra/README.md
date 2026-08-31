@@ -12,6 +12,9 @@ Kafka 는 BE 소유(B 서버) — 여기서는 원격 브로커 주소만 참조
 - `.env.example` — 환경별 값 (`KAFKA_BROKER`, `HDFS_UI_PORT`). `.env` 로 복사해 사용, 커밋 금지
 - `create_topics.sh` — BE Kafka 에 토픽 생성 (자동 생성은 파티션 1 기본값으로 만들어버리므로 금지)
 - `smoke_test.sh` — 배포 합격 판정 (HDFS 쓰기/읽기/복제 + Kafka 왕복)
+- `airflow/Dockerfile` — Airflow + JDK + pyspark + 크롤러 의존성. Spark 는 별도 클러스터 없이
+  DAG 태스크가 `spark-submit --master local[*]` 로 이 컨테이너 안에서 실행
+- `postgres` — Airflow 메타DB (LocalExecutor 는 SQLite 미지원)
 
 ## EC2 부트스트랩 (도착 당일)
 
@@ -47,3 +50,10 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ## 웹 UI
 
 - HDFS NameNode: `http://<호스트>:9770` (로컬 기본. EC2 는 `.env` 에서 9870 으로)
+- Airflow: `http://<호스트>:8080` — 계정 admin, 비밀번호는
+  `docker compose exec airflow cat standalone_admin_password.txt`
+
+## 전 구간 검증
+
+Airflow 웹 UI 에서 `spark_smoke` DAG 수동 트리거 → 성공이면 Airflow→Spark→HDFS 정상.
+CLI 로는 `docker compose exec airflow airflow dags trigger spark_smoke`

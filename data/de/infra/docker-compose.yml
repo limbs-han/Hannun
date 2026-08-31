@@ -47,6 +47,49 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    mem_limit: 512m
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    logging: *logging
+
+  airflow:
+    build:
+      # 크롤러 requirements.txt 를 이미지에 넣기 위해 컨텍스트는 data/de
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
+    # standalone = 스케줄러+웹서버 단일 컨테이너. admin 비밀번호는
+    # `docker compose exec airflow cat standalone_admin_password.txt`
+    command: standalone
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # NameNode 가 root 로 돌아 / 가 root 소유 — 무인증(simple auth) HDFS 라
+      # 클라이언트가 선언한 유저를 그대로 믿으므로 root 로 선언해 쓰기 권한 확보
+      HADOOP_USER_NAME: root
+    # ponytail: Spark driver 가 이 컨테이너 안에서 돌므로 여유 필요 — EC2 스펙 확인 후 조정
+    mem_limit: 2g
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../dags:/opt/airflow/dags
+      - ../jobs:/opt/airflow/jobs
+      - airflow-logs:/opt/airflow/logs
+    depends_on:
+      - postgres
+      - namenode
+    restart: unless-stopped
+    logging: *logging
+
 volumes:
   namenode:
   datanode:
+  postgres:
+  airflow-logs:
