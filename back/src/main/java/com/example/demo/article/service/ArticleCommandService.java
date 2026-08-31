@@ -38,12 +38,12 @@ public class ArticleCommandService {
             return;
         }
 
-        Map<Long, ArticleAssignment> assignmentById = assignments.stream()
-                .collect(Collectors.toMap(ArticleAssignment::articleId, Function.identity()));
+        Map<String, ArticleAssignment> assignmentByLink = assignments.stream()
+                .collect(Collectors.toMap(ArticleAssignment::link, Function.identity()));
 
-        List<Article> articles = articleRepository.findAllById(assignmentById.keySet());
+        List<Article> articles = articleRepository.findAllByLinkIn(assignmentByLink.keySet());
         for (Article article : articles) {
-            ArticleAssignment assignment = assignmentById.get(article.getId());
+            ArticleAssignment assignment = assignmentByLink.get(article.getLink());
             article.applyClusterAssignment(clusterId, groupIdsByLabel.get(assignment.viewpointGroupLabel()));
         }
     }

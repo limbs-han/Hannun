@@ -34,6 +34,15 @@ public class ClusteringCompletedConsumer {
     @KafkaListener(topics = "${news.kafka.topic.clustering-completed}", groupId = "news-write-service")
     public void consume(String payload, Acknowledgment acknowledgment) throws Exception {
         ClusteringCompletedMessage message = objectMapper.readValue(payload, ClusteringCompletedMessage.class);
+
+        // 오래된(이미 저장된 것보다 과거 시점의) 클러스터링 결과면 관점그룹/기사 배정 작업 자체를 안 함 —
+        // 파티션이 여러 개라 도착 순서가 뒤집힐 수 있고, DLQ 재처리로 옛날 메시지가 나중에 다시 들어올 수도 있음.
+        if (!issueCommandService.isNewerThanStored(message.clusterId(), message.clusteredAt())) {
+            log.info("오래된 클러스터링 메시지라 무시: clusterId={}, clusteredAt={}", message.clusterId(), message.clusteredAt());
+            acknowledgment.acknowledge();
+            return;
+        }
+
         List<ArticleAssignment> assignments = message.articles();
 
         if (assignments != null) {
@@ -54,7 +63,8 @@ public class ClusteringCompletedConsumer {
             viewpointGroupCommandService.refreshAggregates(touchedGroupIds);
         }
 
-        issueCommandService.applyClusteringResult(message.clusterId(), message.category(), message.factSummary());
+        issueCommandService.applyClusteringResult(message.clusterId(), message.category(), message.factSummary(),
+                message.clusteredAt());
 
         acknowledgment.acknowledge();
     }

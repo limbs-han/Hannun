@@ -7,12 +7,15 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface ArticleRepository extends JpaRepository<Article, Long> {
     Optional<Article> findByLink(String link);
+
+    List<Article> findAllByLinkIn(Collection<String> links);
 
     @Query("select new com.example.demo.article.repository.ArticleClusterAggregate(" +
             "count(a), count(distinct a.company), min(a.published), max(a.published)) " +
