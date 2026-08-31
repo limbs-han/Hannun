@@ -1,0 +1,52 @@
+# EC2 A(J15E105A) 단일 노드 HDFS 스택.
+# 단일 머신에서는 DataNode 를 늘려도 같은 디스크라 장애 도메인이 하나다.
+# 하둡 공식 싱글노드 가이드 표준(dfs.replication=1)을 따르고,
+# 유실 대비는 새벽 백업(B 서버 rsync)이 담당한다.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  namenode:
+    image: apache/hadoop:3.4.1
+    hostname: namenode
+    # ponytail: 개발용이라 root 실행 — 도커 볼륨이 root 소유로 생성돼 hadoop 유저가 못 쓰는 문제 회피
+    user: root
+    command: ["hdfs", "namenode"]
+    env_file: hadoop.env
+    environment:
+      # 이미지의 자동 포맷은 "이 경로가 없을 때"만 동작하는데 볼륨 마운트가 상위 폴더를 미리 만들어버림.
+      # 포맷 후에만 생기는 current/ 하위 폴더를 기준으로 검사해 첫 기동 시 포맷이 실행되게 함
+      ENSURE_NAMENODE_DIR: /hadoop/dfs/name/current
+      HADOOP_HEAPSIZE_MAX: "1024"
+    # ponytail: EC2 스펙 확인 전 보수치 — free -h 확인 후 메모리 예산표에 맞춰 조정
+    mem_limit: 1536m
+    ports:
+      # 웹 UI. 호스트 9870이 Windows 예약 포트 범위에 걸리는 경우가 있어 기본 9770 사용
+      - "${HDFS_UI_PORT:-9770}:9870"
+    volumes:
+      - namenode:/hadoop/dfs/name
+    restart: unless-stopped
+    logging: *logging
+
+  datanode:
+    image: apache/hadoop:3.4.1
+    hostname: datanode
+    user: root
+    command: ["hdfs", "datanode"]
+    env_file: hadoop.env
+    environment:
+      HADOOP_HEAPSIZE_MAX: "512"
+    mem_limit: 1024m
+    volumes:
+      - datanode:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  namenode:
+  datanode:
