@@ -35,5 +35,10 @@ FEEDS = [
     {"company": "서울신문", "publisher_id": "seoul",
      "rss": ["https://www.seoul.co.kr/xml/rss/google_politics.xml",
              "https://www.seoul.co.kr/xml/rss/google_society.xml",
-             "https://www.seoul.co.kr/xml/rss/google_economy.xml"]},
+             "https://www.seoul.co.kr/xml/rss/google_economy.xml",
+             "https://www.seoul.co.kr/xml/rss/google_international.xml",
+             "https://www.seoul.co.kr/xml/rss/google_sports.xml",
+             "https://www.seoul.co.kr/xml/rss/google_entertainment.xml",
+             "https://www.seoul.co.kr/xml/rss/google_flash_seoul.xml",
+             "https://www.seoul.co.kr/xml/rss/google_plan.xml"]},
 ]
