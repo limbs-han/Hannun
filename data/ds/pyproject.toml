@@ -11,6 +11,8 @@ dependencies = [
     "pandas>=2.2",
     "pyarrow>=15",
     "pydantic>=2.6",
+    "datasketch>=1.6",
+    "scikit-learn>=1.4",
 ]
 
 [project.optional-dependencies]
@@ -19,6 +21,7 @@ dev = ["pytest>=8", "flake8>=7"]
 [project.scripts]
 hannun-ingest = "hannun.ingest.cli:main"
 hannun-preprocess = "hannun.preprocess.cli:main"
+hannun-dedup = "hannun.dedup.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
