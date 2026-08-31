@@ -28,4 +28,17 @@ FEEDS = [
      "rss": ["https://rss.ohmynews.com/rss/ohmynews.xml"]},
     {"company": "국민일보", "publisher_id": "kmib",
      "rss": ["https://www.kmib.co.kr/rss/data/kmibRssAll.xml"]},
+    # 세계일보 피드에는 pubDate 가 없다. published 는 본문 추출 단계에서 채운다
+    {"company": "세계일보", "publisher_id": "segye",
+     "rss": ["https://www.segye.com/Articles/RSSList/segye_recent.xml"]},
+    # 서울신문은 전체 피드가 없어 구글 뉴스용 섹션 피드를 쓴다. 중복 링크는 seen DB 가 거른다
+    {"company": "서울신문", "publisher_id": "seoul",
+     "rss": ["https://www.seoul.co.kr/xml/rss/google_politics.xml",
+             "https://www.seoul.co.kr/xml/rss/google_society.xml",
+             "https://www.seoul.co.kr/xml/rss/google_economy.xml",
+             "https://www.seoul.co.kr/xml/rss/google_international.xml",
+             "https://www.seoul.co.kr/xml/rss/google_sports.xml",
+             "https://www.seoul.co.kr/xml/rss/google_entertainment.xml",
+             "https://www.seoul.co.kr/xml/rss/google_flash_seoul.xml",
+             "https://www.seoul.co.kr/xml/rss/google_plan.xml"]},
 ]
