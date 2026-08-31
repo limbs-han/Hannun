@@ -18,6 +18,7 @@ def test_collect_and_dedup(tmp_path):
 
     first = items["https://news.test/a/1"]
     assert first["company"] == "테스트"
+    assert first["publisher_id"] == "test"
     assert first["title"] == "첫 기사"
     assert first["published"] == "2026-08-20 14:30:00"  # UTC 05:30 → KST 14:30
 

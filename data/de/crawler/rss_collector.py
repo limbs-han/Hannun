@@ -58,6 +58,8 @@ def collect_new(db_path, feeds=FEEDS):
                 tags = [t.get("term") for t in entry.get("tags", []) if t.get("term")]
                 items.append({
                     "company": feed["company"],
+                    # Kafka key(article_id) 계산용. 8필드 메시지 본문에는 넣지 않는다
+                    "publisher_id": feed["publisher_id"],
                     "title": title,
                     "link": link,
                     "published": _published_kst(entry),
