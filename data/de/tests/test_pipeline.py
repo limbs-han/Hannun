@@ -1,5 +1,6 @@
 import json
 
+from crawler.article_id import article_id
 from crawler.pipeline import run
 from tests.test_extractor import ARTICLE_HTML
 
@@ -50,7 +51,7 @@ def test_run_publishes_8_field_article(tmp_path):
     assert (sent, skipped) == (1, 0)
 
     topic, key, msg = producer.messages[0]
-    assert key == "https://news.test/a/1"
+    assert key == article_id("test", "https://news.test/a/1")
     assert set(msg) == {
         "company", "title", "link", "published",
         "category", "category_str", "reporter", "article",

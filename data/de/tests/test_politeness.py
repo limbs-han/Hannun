@@ -1,5 +1,6 @@
 import urllib.robotparser
 
+from crawler.article_id import article_id
 from crawler.pipeline import run
 from crawler.politeness import RateLimiter, RobotsGate
 from tests.test_extractor import ARTICLE_HTML
@@ -98,4 +99,4 @@ def test_article_failure_is_isolated(tmp_path):
         robots=AllowAll(),
     )
     assert (sent, skipped) == (1, 1)  # 한 기사가 죽어도 나머지는 발행
-    assert producer.keys == ["https://news.test/ok"]
+    assert producer.keys == [article_id("test", "https://news.test/ok")]
