@@ -1,10 +1,13 @@
 server:
   tomcat:
     uri-encoding: UTF-8   # 없으면 쿼리 파라미터에 한글 등 비ASCII 오면 Tomcat이 디코딩 실패시킴(400)
+  shutdown: graceful   # SIGTERM 받으면 새 요청은 안 받고, 처리 중이던 요청은 끝까지 마치고 종료 (블루그린 배포용)
 
 spring:
   application:
     name: news-write-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s   # graceful shutdown 최대 대기 시간 — 이거 넘으면 강제 종료
 
   datasource:
     url: jdbc:mysql://localhost:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
@@ -35,6 +38,7 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all   # idempotence 기본 활성화라 명시 안 해도 사실상 all이지만, 3-브로커+min-insync=2 구성이라 명시적으로 고정
     listener:
       ack-mode: manual_immediate
 
@@ -43,6 +47,7 @@ news:
     topic:
       article-ingest: news.article.raw          # 크롤러 -> 우리: 원본 기사 저장 요청
       clustering-completed: news.clustering.completed  # DE -> 우리: 클러스터링 완료, clusterId 벌크 반영
+      search-executed: news.search.executed     # 우리(검색 API) -> 우리(인기 검색어 집계 컨슈머): 검색 실행 이벤트
 
 management:
   endpoints:
