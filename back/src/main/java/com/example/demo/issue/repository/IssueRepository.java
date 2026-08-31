@@ -42,4 +42,22 @@ public interface IssueRepository extends JpaRepository<Issue, Long> {
                                 @Param("cursorLastReportedAt") OffsetDateTime cursorLastReportedAt,
                                 @Param("cursorId") Long cursorId,
                                 @Param("limit") int limit);
+
+    // relevance는 SELECT 별칭이라 WHERE에서 못 씀 -> HAVING으로 커서 비교(MySQL은 HAVING에서 별칭 참조 허용).
+    @Query(value = "select cluster_id as clusterId, category, fact_summary as factSummary, " +
+            "article_count as articleCount, press_count as pressCount, " +
+            "MATCH(fact_summary) AGAINST(:keyword IN NATURAL LANGUAGE MODE) as relevance " +
+            "from issue " +
+            "where MATCH(fact_summary) AGAINST(:keyword IN NATURAL LANGUAGE MODE) " +
+            "and (:category is null or category = :category) " +
+            "having (:cursorValue is null or relevance < :cursorValue " +
+            "        or (relevance = :cursorValue and cluster_id < :cursorId)) " +
+            "order by relevance desc, cluster_id desc " +
+            "limit :limit",
+            nativeQuery = true)
+    List<IssueSearchRow> searchByKeyword(@Param("keyword") String keyword,
+                                          @Param("category") String category,
+                                          @Param("cursorValue") Double cursorValue,
+                                          @Param("cursorId") Long cursorId,
+                                          @Param("limit") int limit);
 }
