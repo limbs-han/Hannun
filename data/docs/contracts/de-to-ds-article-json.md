@@ -36,12 +36,18 @@ published_at)은 더 이상 쓰지 않는다.
   2025 상반기 20%, KBS뉴스·머니S·한국경제TV 는 전량 `OTHER`).
 - 갱신 주기: 실시간분 15분 배치, 과거분은 반입 시.
 
-## DS 가 따라와야 할 것 (이 개정으로 생긴 작업)
+## DS 반영 상태 (2026-08-31 완료)
 
-`data/ds/src/hannun` 의 CommonArticle 모델과 gold.py, 샘플, 테스트가 아직
-옛 필드명 기준이다. 다음 매핑으로 개명 필요:
-publisher_name→company, url→link, content→article, author→reporter,
-published_at→published (형식은 동일하게 UTC). source_type 에 `HTML` 추가,
-category 는 `OTHER` 채움 규칙 반영.
+DS 는 필드를 **개명하지 않고 입력 경계에서 흡수한다** — `CommonArticle` 이 새 이름과
+옛 이름을 모두 받고(company→publisher_name, link→url, article→content,
+reporter→author, published→published_at), Gold 컬럼·정제/중복 테이블·DS1→DS2
+출력은 기존 이름 그대로다. 입력 계약이 또 바뀌어도 하류가 흔들리지 않게 하기 위한
+구조라 앞으로도 유지한다.
+
+- URL 정규화(프래그먼트 제거 → 추적 파라미터 12개 제거 → 남은 쿼리 정렬)는 DS 의
+  `schema.normalize_url` 이 스키마와 같은 규칙을 구현하고, 받은 `article_id` 를
+  재계산해 대조한 결과를 Gold 에 `article_id_verified` 로 남긴다.
+- `source_type` 의 `HTML`, `category` 의 `OTHER` 채움·원문 문자열 규칙은 반영돼 있다.
+- `crawled_at` 은 읽되 Gold 에 저장하지 않는다. 필요해지면 컬럼을 추가한다.
 
 계약을 바꾸는 MR 에는 읽는 쪽(DS)을 리뷰어로 넣는다.
