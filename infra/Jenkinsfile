@@ -1,0 +1,30 @@
+// develop 브랜치에 머지될 때마다 실행. 모노레포(back/data/front)라서 실제로 바뀐 폴더의 스테이지만 동작함.
+pipeline {
+    agent any
+
+    stages {
+        stage('Deploy Backend') {
+            when { changeset "back/**" }
+            steps {
+                sh 'chmod +x back/deploy/deploy.sh'
+                sh 'cd back/deploy && ./deploy.sh'
+            }
+        }
+
+        stage('Deploy Data') {
+            when { changeset "data/**" }
+            steps {
+                // TODO: 데이터팀 배포 스크립트로 교체 필요 (담당: 데이터팀)
+                echo 'data/ 변경 감지됨 - 배포 스크립트 아직 없음'
+            }
+        }
+
+        stage('Deploy Frontend') {
+            when { changeset "front/**" }
+            steps {
+                // TODO: 프론트팀 배포 스크립트로 교체 필요 (담당: 프론트팀)
+                echo 'front/ 변경 감지됨 - 배포 스크립트 아직 없음'
+            }
+        }
+    }
+}
