@@ -52,13 +52,17 @@ while true; do
 done
 
 echo "==> nginx upstream을 [$target] 으로 전환"
-cat > /tmp/news-app-upstream.conf << EOF
+# 고정 파일명(/tmp/news-app-upstream.conf)을 쓰면 실행 유저가 바뀔 때(예: 수동 ubuntu 실행 vs 젠킨스 jenkins 유저 실행)
+# 이전 유저 소유 파일이라 쓰기 권한이 없어서 실패함 -> 매번 새 임시 파일로.
+TMP_UPSTREAM_CONF="$(mktemp)"
+cat > "$TMP_UPSTREAM_CONF" << EOF
 upstream news_app {
     server 127.0.0.1:${t1};
     server 127.0.0.1:${t2};
 }
 EOF
-sudo cp /tmp/news-app-upstream.conf "$UPSTREAM_CONF"
+sudo cp "$TMP_UPSTREAM_CONF" "$UPSTREAM_CONF"
+rm -f "$TMP_UPSTREAM_CONF"
 sudo nginx -t
 sudo systemctl reload nginx
 echo "==> nginx 전환 완료 (트래픽 끊김 없음 - reload는 기존 연결을 안 끊고 새 연결부터 전환)"
