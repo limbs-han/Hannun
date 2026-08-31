@@ -15,7 +15,8 @@ from crawler.feeds import FEEDS
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "Mozilla/5.0 (compatible; HannunBot/0.1)"
+# robotparser 는 UA 의 첫 토큰으로 규칙을 매칭하므로 봇 이름이 앞에 와야 한다
+USER_AGENT = "HannunBot/0.1 (+https://lab.ssafy.com/s15-bigdata-dist-sub1/S15P21E105)"
 KST = timezone(timedelta(hours=9))
 
 
