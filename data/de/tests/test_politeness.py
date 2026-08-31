@@ -1,3 +1,4 @@
+import urllib.error
 import urllib.robotparser
 
 from crawler.article_id import article_id
@@ -100,3 +101,51 @@ def test_article_failure_is_isolated(tmp_path):
     )
     assert (sent, skipped) == (1, 1)  # 한 기사가 죽어도 나머지는 발행
     assert producer.keys == [article_id("test", "https://news.test/ok")]
+
+
+class FlakyRules:
+    """앞 fail_count 회는 403, 그 뒤로는 규칙 텍스트를 주는 가짜 robots 서버."""
+
+    def __init__(self, fail_count, rules="User-agent: *\nDisallow: /private/"):
+        self.fail_count = fail_count
+        self.rules = rules
+        self.calls = 0
+
+    def __call__(self, domain):
+        self.calls += 1
+        if self.calls <= self.fail_count:
+            raise urllib.error.HTTPError(f"https://{domain}/robots.txt", 403, "Forbidden", None, None)
+        return self.rules
+
+
+def _gate(fetcher):
+    gate = RobotsGate("HannunBot", sleep=lambda s: None)
+    gate._fetch_rules = fetcher
+    return gate
+
+
+def test_robots_transient_403_recovers_within_retries():
+    gate = _gate(FlakyRules(fail_count=1))  # 1회 403 후 정상
+    assert gate.allowed("https://news.test/article/1") is True
+    assert gate.allowed("https://news.test/private/1") is False
+
+
+def test_robots_persistent_403_holds_run_without_permanent_ban():
+    fetcher = FlakyRules(fail_count=99)  # 계속 403
+    gate = _gate(fetcher)
+    assert gate.allowed("https://news.test/article/1") is False  # 이번 실행 보류
+    calls_after_first = fetcher.calls
+    assert gate.allowed("https://news.test/article/2") is False  # 같은 실행에선 재요청 안 함
+    assert fetcher.calls == calls_after_first
+
+    fetcher.fail_count = 0  # 다음 실행에서 서버가 정상으로 돌아온 상황
+    fresh = _gate(fetcher)
+    assert fresh.allowed("https://news.test/article/1") is True  # 영구 차단이 아님
+
+
+def test_robots_missing_file_means_allow():
+    def not_found(domain):
+        return None  # 404 등 규칙 없음
+
+    gate = _gate(not_found)
+    assert gate.allowed("https://news.test/anything") is True
