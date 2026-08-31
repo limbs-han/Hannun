@@ -11,9 +11,13 @@ import com.example.demo.issue.dto.IssueDetailResponse.ViewpointGroupPage;
 import com.example.demo.issue.dto.IssueDetailResponse.ViewpointGroupSummary;
 import com.example.demo.issue.dto.IssueFeedResponse;
 import com.example.demo.issue.dto.IssueFeedResponse.IssueSummary;
+import com.example.demo.issue.dto.SearchListResponse;
+import com.example.demo.issue.dto.SearchListResponse.SearchItem;
+import com.example.demo.issue.dto.SearchSuggestionsResponse;
 import com.example.demo.issue.dto.ViewpointGroupArticlesResponse;
 import com.example.demo.issue.exception.IssueNotFoundException;
 import com.example.demo.issue.repository.IssueRepository;
+import com.example.demo.issue.repository.IssueSearchRow;
 import com.example.demo.issue.service.strategy.IssueFeedStrategy;
 import com.example.demo.issue.service.strategy.IssueFeedStrategyResolver;
 import com.example.demo.viewpointgroup.domain.ViewpointGroup;
@@ -44,6 +48,8 @@ public class IssueQueryService {
     private final ViewpointGroupQueryService viewpointGroupQueryService;
     private final IssueFeedStrategyResolver issueFeedStrategyResolver;
     private final StanceResolver stanceResolver;
+    private final SearchEventPublisher searchEventPublisher;
+    private final SearchPopularityAggregator searchPopularityAggregator;
 
     @Cacheable(cacheNames = ISSUE_FEED_CACHE,
             key = "#category + ':' + #sort + ':' + (#cursorValue ?: '0') + ':' + (#cursorId ?: '0')")
@@ -89,6 +95,28 @@ public class IssueQueryService {
                 stanceRatio, stance, viewpointGroups, viewpointGroupPage);
     }
 
+    public SearchListResponse search(String keyword, String category, Double cursorValue, Long cursorId, int size) {
+        List<IssueSearchRow> rows = issueRepository.searchByKeyword(keyword, category, cursorValue, cursorId, size + 1);
+        CursorPage<IssueSearchRow> cursorPage = CursorPage.of(rows, size);
+        List<SearchItem> items = cursorPage.items().stream().map(this::toSearchItem).toList();
+
+        // cursor가 둘 다 없을 때만 = 실제 "검색 실행"(첫 페이지). 이후 스크롤(SEARCH_SCROLL)은 인기 검색어 집계 대상이 아님.
+        if (cursorValue == null && cursorId == null) {
+            searchEventPublisher.publishSearchExecuted(keyword);
+        }
+
+        if (!cursorPage.hasNext()) {
+            return new SearchListResponse("LIST", keyword, items, null, null, false);
+        }
+
+        IssueSearchRow last = cursorPage.last();
+        return new SearchListResponse("LIST", keyword, items, last.getRelevance(), last.getClusterId(), true);
+    }
+
+    public SearchSuggestionsResponse getSearchSuggestions(int size) {
+        return new SearchSuggestionsResponse(searchPopularityAggregator.getPopularKeywords(size));
+    }
+
     public ViewpointGroupArticlesResponse getViewpointGroupArticles(Long issueId, Long groupId,
                                                                       OffsetDateTime cursorPublished, Long cursorArticleId, int size) {
         ViewpointGroup group = viewpointGroupQueryService.getById(groupId);
@@ -121,6 +149,11 @@ public class IssueQueryService {
 
         return new ViewpointGroupSummary(group.getId(), group.getLabel(), group.getStance(),
                 group.getArticleCount(), group.getPressCount(), previews, remainingCount);
+    }
+
+    private SearchItem toSearchItem(IssueSearchRow row) {
+        return new SearchItem(row.getClusterId(), row.getCategory(), row.getFactSummary(),
+                row.getArticleCount(), row.getPressCount());
     }
 
     private ArticlePreview toArticlePreview(Article article) {
