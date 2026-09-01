@@ -265,8 +265,8 @@
     },
     {
       "id": 13,
-      "title": "Kafka DLQ 유입률 (건/분)",
-      "description": "재시도 다 실패해서 DLQ(-dlt 토픽)로 빠진 메시지 속도. 0이 정상, 올라가면 그 토픽 처리 중 뭔가 계속 깨지고 있다는 뜻.",
+      "title": "Kafka DLQ 유입 건수 (5분 구간)",
+      "description": "재시도 다 실패해서 DLQ(-dlt 토픽)로 빠진 메시지 건수(최근 5분 구간 기준). 0이 정상, 올라가면 그 토픽 처리 중 뭔가 계속 깨지고 있다는 뜻.",
       "type": "graph",
       "datasource": "Prometheus",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 57 },
@@ -276,7 +276,7 @@
       "nullPointMode": "connected",
       "targets": [
         {
-          "expr": "sum(rate(kafka_topic_partition_current_offset{topic=~\".*-dlt\"}[5m])) by (topic) * 60",
+          "expr": "sum(increase(kafka_topic_partition_current_offset{topic=~\".*-dlt\"}[5m])) by (topic)",
           "legendFormat": "{{topic}}",
           "refId": "A"
         }
@@ -297,7 +297,7 @@
       "nullPointMode": "connected",
       "targets": [
         {
-          "expr": "mysql_global_status_buffer_pool_pages{state=\"data\"} / (mysql_global_status_buffer_pool_pages{state=\"data\"} + mysql_global_status_buffer_pool_pages{state=\"free\"} + mysql_global_status_buffer_pool_pages{state=\"misc\"})",
+          "expr": "mysql_global_status_buffer_pool_pages{state=\"data\"} / ignoring(state) sum without(state) (mysql_global_status_buffer_pool_pages)",
           "legendFormat": "usage ratio",
           "refId": "A"
         }
