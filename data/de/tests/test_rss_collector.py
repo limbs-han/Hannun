@@ -26,3 +26,13 @@ def test_collect_and_dedup(tmp_path):
 
     # 같은 피드를 다시 훑으면 전부 이미 본 기사라 빈 목록
     assert collect_new(db, feeds=FEEDS) == []
+
+
+def test_encode_link_is_idempotent_and_targets_hangul_space_only():
+    from crawler.rss_collector import encode_link
+
+    raw = "https://a.com/기사 목록?p=1&q=값"
+    encoded = encode_link(raw)
+    assert encoded == "https://a.com/%EA%B8%B0%EC%82%AC%20%EB%AA%A9%EB%A1%9D?p=1&q=%EA%B0%92"
+    assert encode_link(encoded) == encoded  # 멱등
+    assert encoded.isascii()

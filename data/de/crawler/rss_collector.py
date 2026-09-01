@@ -5,6 +5,7 @@
 """
 
 import logging
+import re
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,21 @@ logger = logging.getLogger(__name__)
 
 # robotparser 는 UA 의 첫 토큰으로 규칙을 매칭하므로 봇 이름이 앞에 와야 한다
 USER_AGENT = "HannunBot/0.1 (+https://lab.ssafy.com/s15-bigdata-dist-sub1/S15P21E105)"
+
+_HANGUL_OR_SPACE = re.compile(r"[ ㄱ-ㆎ가-힣]")
+
+
+def encode_link(url):
+    """link 의 한글·공백만 %XX(UTF-8, 대문자)로 인코딩한다 (팀 확정 규칙).
+
+    수집 시점에 한 번만 적용하고, 이후 Kafka·HDFS·DS·BE 매칭까지 전 구간이
+    이 문자열을 변환 없이 그대로 쓴다. % 를 건드리지 않으므로 멱등이다.
+    """
+    return _HANGUL_OR_SPACE.sub(
+        lambda m: "".join(f"%{b:02X}" for b in m.group().encode("utf-8")), url
+    )
+
+
 KST = timezone(timedelta(hours=9))
 
 
@@ -47,7 +63,7 @@ def collect_new(db_path, feeds=FEEDS):
                 logger.warning("피드 파싱 실패, 스킵: %s %s", feed["company"], rss_url[:80])
                 continue
             for entry in parsed.entries:
-                link = (entry.get("link") or "").strip()
+                link = encode_link((entry.get("link") or "").strip())
                 title = (entry.get("title") or "").strip()
                 if not link or not title:
                     continue
