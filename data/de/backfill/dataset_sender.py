@@ -111,6 +111,10 @@ class Checkpoint:
         if link:
             self._conn.execute("INSERT OR IGNORE INTO sent_links VALUES (?)", (link,))
 
+    def total_sent(self):
+        """지금까지 전달 확인까지 끝난 누적 송신 수."""
+        return self._conn.execute("SELECT COUNT(*) FROM sent_links").fetchone()[0]
+
     def already_sent(self, link):
         return self._conn.execute("SELECT 1 FROM sent_links WHERE link=?", (link,)).fetchone() is not None
 
@@ -137,6 +141,9 @@ def run(send, limit=None, checkpoint_path="dataset_sender_checkpoint.sqlite", pr
         verbose=False):
     stats = {"sent": 0, "dedup": 0, "invalid": 0}
     ckpt = Checkpoint(checkpoint_path)
+    base_sent = ckpt.total_sent()  # 표시 번호를 이전 실행에서 이어가기 위한 누적
+    if base_sent:
+        logger.info("이전까지 %s건 송신 완료 상태에서 이어서 시작", f"{base_sent:,}")
     if send and producer is None:
         _preflight(BROKER)
         from confluent_kafka import Producer
@@ -194,10 +201,10 @@ def run(send, limit=None, checkpoint_path="dataset_sender_checkpoint.sqlite", pr
                 stats["sent"] += 1
                 ckpt.mark(name, row_no, message["link"])
                 if verbose:
-                    print(f"[{stats['sent']:,}] {message['company']} | {message['title'][:50]}", flush=True)
+                    print(f"[{base_sent + stats['sent']:,}] {message['company']} | {message['title'][:50]}", flush=True)
                 elif stats["sent"] % 1000 == 0:
-                    logger.info("%s %s건 송신, 마지막: %s | %s",
-                                name, f"{stats['sent']:,}", message["company"], message["title"][:40])
+                    logger.info("%s 누적 %s건 송신, 마지막: %s | %s",
+                                name, f"{base_sent + stats['sent']:,}", message["company"], message["title"][:40])
                 if stats["sent"] % 5000 == 0:
                     _sync()
                     logger.info("%s: %s행, 누적 %s", name, f"{row_no:,}", stats)
