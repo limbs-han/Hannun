@@ -23,7 +23,7 @@ from crawler.rss_collector import USER_AGENT, collect_new
 logger = logging.getLogger(__name__)
 
 BROKER = os.environ.get("KAFKA_BROKER", "localhost:29092")
-TOPIC = os.environ.get("ARTICLE_TOPIC", "news.article.realtime.v1")
+TOPIC = os.environ.get("ARTICLE_TOPIC", "news.article.raw")
 
 
 def _on_delivery(err, msg):
@@ -31,16 +31,24 @@ def _on_delivery(err, msg):
         logger.warning("Kafka 발행 실패: %s (key=%s)", err, msg.key())
 
 
+def _to_iso_kst(published):
+    """타임존 없는 KST 문자열을 +09:00 오프셋 ISO-8601 로 바꾼다 (송신 스펙)."""
+    if not published:
+        return None
+    return published.strip().replace(" ", "T") + "+09:00"
+
+
 def build_article(item, parsed):
-    """수집 항목과 추출 결과를 8필드 기사 JSON 으로 합친다."""
+    """수집 항목과 추출 결과를 news.article.raw 메시지로 합친다."""
     return {
         "company": item["company"],
         "title": item["title"],
         "link": item["link"],
-        "published": item.get("published") or parsed.get("published"),
+        "published": _to_iso_kst(item.get("published") or parsed.get("published")),
         "category": None,  # 코드 매핑은 적재 변환(-66) 몫
         "category_str": item.get("category_str"),
         "reporter": parsed.get("reporter"),
+        "thumbnail_url": parsed.get("thumbnail_url"),
         "article": parsed["article"],
     }
 
@@ -50,7 +58,7 @@ def run(db_path, producer=None, fetch_fn=fetch, feeds=None, limiter=None, robots
     kwargs = {"feeds": feeds} if feeds is not None else {}
     items = collect_new(db_path, **kwargs)
     if producer is None:
-        producer = Producer({"bootstrap.servers": BROKER})
+        producer = Producer({"bootstrap.servers": BROKER, "acks": "all"})
     limiter = limiter or RateLimiter()
     robots = robots or RobotsGate(USER_AGENT)
     sent = skipped = 0
