@@ -49,9 +49,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## 웹 UI
 
-- HDFS NameNode: `http://<호스트>:9770` (로컬 기본. EC2 는 `.env` 에서 9870 으로)
-- Airflow: `http://<호스트>:8080` — 계정 admin, 비밀번호는
-  `docker compose exec airflow cat standalone_admin_password.txt`
+접속 주소·pem 보관·SSH 터널은 `data/docs/ec2-a-access.md` 참고.
+HDFS UI(9870)는 무인증이라 compose 에서 서버 내부 전용(127.0.0.1)으로 묶여 있다.
 
 ## 전 구간 검증
 
