@@ -1,20 +1,17 @@
 package com.example.demo.article.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import tools.jackson.databind.PropertyNamingStrategies;
-import tools.jackson.databind.annotation.JsonDeserialize;
-import tools.jackson.databind.annotation.JsonNaming;
 
 import java.time.OffsetDateTime;
 
-// 크롤러가 snake_case로 보냄(category_str, thumbnail_url 등) -> 필드명 전체를 snake_case로 매핑.
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+// 실제로는 camelCase + 표준 ISO-8601(타임존 포함)로 옴 - snake_case/커스텀 날짜 파싱은
+// 크롤러 쪽 오발송이었다고 확인돼서 되돌림.
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ArticleIngestMessage(
         String company,
         String title,
         String link,
-        @JsonDeserialize(using = KstDateTimeDeserializer.class) OffsetDateTime published,
+        OffsetDateTime published,
         String category,
         String categoryStr,
         String reporter,
