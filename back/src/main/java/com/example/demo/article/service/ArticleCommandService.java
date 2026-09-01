@@ -4,6 +4,7 @@ import com.example.demo.article.domain.Article;
 import com.example.demo.article.dto.ArticleCreateRequest;
 import com.example.demo.article.dto.ClusteringCompletedMessage.ArticleAssignment;
 import com.example.demo.article.repository.ArticleRepository;
+import io.micrometer.core.annotation.Timed;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,8 @@ public class ArticleCommandService {
         return articleRepository.save(article);
     }
 
+    @Timed(value = "db.write.duration", extraTags = {"operation", "article-bulk-upsert"},
+            description = "article 벌크 upsert 쿼리 실행 시간(JSON 파싱 등 다른 구간 제외, DB 왕복만)")
     public void saveAll(List<ArticleCreateRequest> requests) {
         if (requests.isEmpty()) {
             return;

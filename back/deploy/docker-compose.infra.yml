@@ -213,6 +213,26 @@ services:
     networks:
       - news-net
 
+  # 컨테이너별 CPU/메모리를 Prometheus로 노출 - 카프카 브로커가 메모리 한도(1GB) 근처까지 갔던 걸
+  # docker stats로 수동 확인해야 했던 문제(8000/s 스트레스 테스트 때) 해결용. 다른 컨테이너 안 건드리고
+  # 읽기 전용으로 지켜만 봄.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: news-cadvisor
+    restart: unless-stopped
+    mem_limit: 128m
+    privileged: true
+    ports:
+      - "8085:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - news-net
+
 networks:
   news-net:
     driver: bridge
