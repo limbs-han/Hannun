@@ -55,16 +55,23 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
   EC2 의 것을 보려면 SSH 터널을 뚫고 브라우저에서 `http://localhost:9870` 접속:
 
 ```bash
-ssh -i <pem 경로> -L 9870:localhost:9870 ubuntu@j15e105a.p.ssafy.io
+ssh -i ~/.ssh/J15E105AT.pem -L 9870:localhost:9870 ubuntu@j15e105a.p.ssafy.io
 ```
 
-매번 치기 싫으면 `~/.ssh/config` 에 저장해두고 `ssh a` 로 접속:
+pem 키는 다운로드 폴더가 아니라 `~/.ssh/` 에 두고, 본인만 읽게 잠근다.
+Windows 는 PowerShell 에서:
+
+```powershell
+icacls "$HOME\.ssh\J15E105AT.pem" /inheritance:r /grant:r "$env:USERNAME`:R"
+```
+
+터널 명령을 매번 치기 싫으면 `~/.ssh/config` 에 저장해두고 `ssh a` 로 접속:
 
 ```
 Host a
   HostName j15e105a.p.ssafy.io
   User ubuntu
-  IdentityFile <pem 경로>
+  IdentityFile ~/.ssh/J15E105AT.pem
   LocalForward 9870 localhost:9870
 ```
 
