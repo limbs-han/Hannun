@@ -54,10 +54,11 @@ def test_run_publishes_8_field_article(tmp_path):
     assert key == article_id("test", "https://news.test/a/1")
     assert set(msg) == {
         "company", "title", "link", "published",
-        "category", "category_str", "reporter", "article",
+        "category", "category_str", "reporter", "thumbnail_url", "article",
     }
     assert msg["company"] == "테스트"
-    assert msg["published"] == "2026-08-26 14:30:00"  # RSS pubDate 가 페이지 날짜보다 우선
+    # RSS pubDate 가 페이지 날짜보다 우선하고, 송신 스펙대로 +09:00 오프셋이 붙는다
+    assert msg["published"] == "2026-08-26T14:30:00+09:00"
     assert msg["category_str"] == "정치"
     assert msg["reporter"] == "홍길동"
     assert len(msg["article"]) >= 100

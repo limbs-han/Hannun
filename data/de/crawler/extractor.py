@@ -55,4 +55,5 @@ def parse(html, url=None):
         "article": article,
         "reporter": doc.get("author") or None,
         "published": published,
+        "thumbnail_url": doc.get("image") or None,
     }
