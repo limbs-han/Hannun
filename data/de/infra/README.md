@@ -49,31 +49,8 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## 웹 UI
 
-- Airflow: `http://<호스트>:8080` — 계정 admin, 비밀번호는
-  `docker compose exec airflow cat standalone_admin_password.txt`
-- HDFS NameNode: 무인증 UI 라 서버 내부 전용(127.0.0.1)으로 묶여 있다.
-  EC2 의 것을 보려면 SSH 터널을 뚫고 브라우저에서 `http://localhost:9870` 접속:
-
-```bash
-ssh -i ~/.ssh/J15E105AT.pem -L 9870:localhost:9870 ubuntu@j15e105a.p.ssafy.io
-```
-
-pem 키는 다운로드 폴더가 아니라 `~/.ssh/` 에 두고, 본인만 읽게 잠근다.
-Windows 는 PowerShell 에서:
-
-```powershell
-icacls "$HOME\.ssh\J15E105AT.pem" /inheritance:r /grant:r "$env:USERNAME`:R"
-```
-
-터널 명령을 매번 치기 싫으면 `~/.ssh/config` 에 저장해두고 `ssh a` 로 접속:
-
-```
-Host a
-  HostName j15e105a.p.ssafy.io
-  User ubuntu
-  IdentityFile ~/.ssh/J15E105AT.pem
-  LocalForward 9870 localhost:9870
-```
+접속 주소·pem 보관·SSH 터널은 `data/docs/ec2-a-access.md` 참고.
+HDFS UI(9870)는 무인증이라 compose 에서 서버 내부 전용(127.0.0.1)으로 묶여 있다.
 
 ## 전 구간 검증
 
