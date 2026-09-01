@@ -420,6 +420,48 @@
       ],
       "yaxes": [{ "format": "percentunit", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 21,
+      "title": "메시지 처리 시간 (컨슈머별 전체)",
+      "description": "@Timed로 측정한 컨슈머 메시지/배치 1건 전체 처리 시간(JSON 파싱 + DB 저장 등 다 포함). article-ingest는 배치 단위, clustering-completed는 메시지 단위.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 89 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(message_processing_duration_seconds_sum[2m])) by (consumer) / sum(rate(message_processing_duration_seconds_count[2m])) by (consumer)",
+          "legendFormat": "{{consumer}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 22,
+      "title": "DB 벌크 upsert 처리 시간",
+      "description": "@Timed로 측정한 ArticleCommandService.saveAll()만의 순수 DB 왕복 시간 - 21번 패널(전체)에서 이 값을 빼면 JSON 파싱 등 나머지 구간 시간이 나옴. HikariCP usage 지표랑 교차검증용.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 89 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(db_write_duration_seconds_sum[2m])) by (operation) / sum(rate(db_write_duration_seconds_count[2m])) by (operation)",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
     }
   ]
 }
