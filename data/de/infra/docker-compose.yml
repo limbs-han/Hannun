@@ -83,6 +83,9 @@ services:
     volumes:
       - ../dags:/opt/airflow/dags
       - ../jobs:/opt/airflow/jobs
+      - ../crawler:/opt/airflow/crawler
+      # 수집기의 "이미 본 기사" sqlite — 컨테이너 재생성 시에도 보존해야 재발행이 없다
+      - crawler-state:/opt/airflow/state
       - airflow-logs:/opt/airflow/logs
     depends_on:
       - postgres
@@ -95,3 +98,4 @@ volumes:
   datanode:
   postgres:
   airflow-logs:
+  crawler-state:
