@@ -2,7 +2,7 @@
 
 원본 보존 계층 — Kafka value(JSON)를 파싱·변형 없이 줄 단위(jsonl)로 쌓는다.
 체크포인트가 소비 위치를 기억하므로 재실행해도 중복·누락 없다(파일 싱크 exactly-once).
-경로 규칙은 data/docs/lake-layout.md.
+경로 규칙은 data/de/docs/lake-layout.md.
 
 spark-submit --master local[*] \
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4 \
