@@ -24,8 +24,9 @@ services:
     # ponytail: EC2 스펙 확인 전 보수치 — free -h 확인 후 메모리 예산표에 맞춰 조정
     mem_limit: 1536m
     ports:
-      # 웹 UI. 호스트 9870이 Windows 예약 포트 범위에 걸리는 경우가 있어 기본 9770 사용
-      - "${HDFS_UI_PORT:-9770}:9870"
+      # 웹 UI. 호스트 9870이 Windows 예약 포트 범위에 걸리는 경우가 있어 기본 9770 사용.
+      # HDFS UI 는 무인증이라 서버 내부 전용으로 묶고 SSH 터널로 본다 (README 웹 UI 절)
+      - "127.0.0.1:${HDFS_UI_PORT:-9770}:9870"
     volumes:
       - namenode:/hadoop/dfs/name
     restart: unless-stopped

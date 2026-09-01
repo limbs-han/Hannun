@@ -49,9 +49,24 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ## 웹 UI
 
-- HDFS NameNode: `http://<호스트>:9770` (로컬 기본. EC2 는 `.env` 에서 9870 으로)
 - Airflow: `http://<호스트>:8080` — 계정 admin, 비밀번호는
   `docker compose exec airflow cat standalone_admin_password.txt`
+- HDFS NameNode: 무인증 UI 라 서버 내부 전용(127.0.0.1)으로 묶여 있다.
+  EC2 의 것을 보려면 SSH 터널을 뚫고 브라우저에서 `http://localhost:9870` 접속:
+
+```bash
+ssh -i <pem 경로> -L 9870:localhost:9870 ubuntu@j15e105a.p.ssafy.io
+```
+
+매번 치기 싫으면 `~/.ssh/config` 에 저장해두고 `ssh a` 로 접속:
+
+```
+Host a
+  HostName j15e105a.p.ssafy.io
+  User ubuntu
+  IdentityFile <pem 경로>
+  LocalForward 9870 localhost:9870
+```
 
 ## 전 구간 검증
 
