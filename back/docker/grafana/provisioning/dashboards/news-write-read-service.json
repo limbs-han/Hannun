@@ -402,8 +402,8 @@
     },
     {
       "id": 20,
-      "title": "컨테이너별 메모리 사용량 (전체)",
-      "description": "cAdvisor 기준 전체 컨테이너 working_set 메모리. docker stats로 수동 확인하던 걸 대체.",
+      "title": "컨테이너별 메모리 사용률 (전체, mem_limit 대비 %)",
+      "description": "cAdvisor working_set / 컨테이너별 설정된 mem_limit. 컨테이너마다 한도가 다 달라서(mysql 2GB, kafka 1GB, exporter 64m 등) 절대값(byte)이 아니라 각자 한도 대비 비율로 봐야 '위험한 컨테이너'가 바로 보임. 100%에 가까우면 OOM 재시작 위험.",
       "type": "graph",
       "datasource": "Prometheus",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 81 },
@@ -413,12 +413,12 @@
       "nullPointMode": "connected",
       "targets": [
         {
-          "expr": "container_memory_working_set_bytes{name=~\"news-.+\"}",
+          "expr": "container_memory_working_set_bytes{name=~\"news-.+\"} / container_spec_memory_limit_bytes{name=~\"news-.+\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
       ],
-      "yaxes": [{ "format": "bytes", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "yaxes": [{ "format": "percentunit", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     }
   ]
