@@ -116,7 +116,8 @@ def iter_rows(name):
                 yield row_no, row
 
 
-def run(send, limit=None, checkpoint_path="dataset_sender_checkpoint.sqlite", producer=None):
+def run(send, limit=None, checkpoint_path="dataset_sender_checkpoint.sqlite", producer=None,
+        verbose=False):
     stats = {"sent": 0, "dedup": 0, "invalid": 0}
     ckpt = Checkpoint(checkpoint_path)
     if send and producer is None:
@@ -153,6 +154,11 @@ def run(send, limit=None, checkpoint_path="dataset_sender_checkpoint.sqlite", pr
                 producer.poll(0)
             stats["sent"] += 1
             ckpt.mark(name, row_no, message["link"])
+            if verbose:
+                print(f"[{stats['sent']:,}] {message['company']} | {message['title'][:50]}", flush=True)
+            elif stats["sent"] % 1000 == 0:
+                logger.info("%s %s건 송신, 마지막: %s | %s",
+                            name, f"{stats['sent']:,}", message["company"], message["title"][:40])
             if stats["sent"] % 5000 == 0:
                 ckpt.commit()
                 if send:
@@ -173,7 +179,11 @@ if __name__ == "__main__":
     group.add_argument("--dry-run", action="store_true", help="앞 5건 변환 결과만 출력")
     group.add_argument("--send", action="store_true", help="실제 송신")
     ap.add_argument("--limit", type=int, help="송신 건수 상한 (파일럿용)")
+    ap.add_argument("--files", nargs="+", choices=FILES, help="보낼 파일만 지정 (예: --files 2019)")
+    ap.add_argument("--verbose", action="store_true", help="보내는 기사를 건별로 출력")
     args = ap.parse_args()
+    if args.files:
+        FILES[:] = args.files
 
     if args.dry_run:
         shown = 0
@@ -186,5 +196,5 @@ if __name__ == "__main__":
                 if shown >= 5:
                     sys.exit(0)
     else:
-        result = run(send=True, limit=args.limit)
+        result = run(send=True, limit=args.limit, verbose=args.verbose)
         print(f"완료: {result}")
