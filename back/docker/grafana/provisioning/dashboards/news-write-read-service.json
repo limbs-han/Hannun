@@ -269,7 +269,7 @@
       "description": "재시도 다 실패해서 DLQ(-dlt 토픽)로 빠진 메시지 속도. 0이 정상, 올라가면 그 토픽 처리 중 뭔가 계속 깨지고 있다는 뜻.",
       "type": "graph",
       "datasource": "Prometheus",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 57 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 57 },
       "lines": true,
       "fill": 1,
       "linewidth": 2,
@@ -278,27 +278,6 @@
         {
           "expr": "sum(rate(kafka_topic_partition_current_offset{topic=~\".*-dlt\"}[5m])) by (topic) * 60",
           "legendFormat": "{{topic}}",
-          "refId": "A"
-        }
-      ],
-      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
-      "xaxis": { "mode": "time", "show": true }
-    },
-    {
-      "id": 14,
-      "title": "Kafka 리스너 처리 실패율 (예외별)",
-      "description": "리스너가 예외를 던진 비율(재시도 포함, DLQ 최종 확정 건수보다 많을 수 있음). exception 라벨로 원인 바로 확인 가능.",
-      "type": "graph",
-      "datasource": "Prometheus",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 57 },
-      "lines": true,
-      "fill": 1,
-      "linewidth": 2,
-      "nullPointMode": "connected",
-      "targets": [
-        {
-          "expr": "sum(rate(spring_kafka_listener_seconds_count{result=\"failure\"}[5m])) by (name, exception)",
-          "legendFormat": "{{name}} - {{exception}}",
           "refId": "A"
         }
       ],
