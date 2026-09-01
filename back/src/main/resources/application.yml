@@ -41,10 +41,6 @@ spring:
       acks: all   # idempotence 기본 활성화라 명시 안 해도 사실상 all이지만, 3-브로커+min-insync=2 구성이라 명시적으로 고정
     listener:
       ack-mode: manual_immediate
-      # concurrency는 여기서 글로벌로 안 주고 리스너별로 필요한 만큼만 개별 설정한다
-      # (spring.kafka.listener.concurrency는 모든 @KafkaListener에 공통 적용돼서,
-      #  MySQL을 heavy하게 쓰는 clustering-completed 리스너까지 같이 늘어나
-      #  HikariCP 풀을 article-ingest랑 나눠 쓰게 됨 - 지금 트래픽이 몰리는 건 article-ingest뿐).
 
 news:
   kafka:
