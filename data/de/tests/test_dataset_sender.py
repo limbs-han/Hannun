@@ -102,3 +102,21 @@ def test_run_refuses_to_checkpoint_undelivered(tmp_path, monkeypatch):
     good = FakeProducer()
     stats = ds.run(send=True, checkpoint_path=ckpt, producer=good)
     assert stats["sent"] == 1 and len(good.messages) == 1
+
+
+def test_resume_counter_continues_from_checkpoint(tmp_path, monkeypatch, capsys):
+    rows = [
+        ["동아일보", "기사1", "https://a.com/1", "2025-01-01 10:00", "문화", "", "김기자", "b"],
+        ["동아일보", "기사2", "https://a.com/2", "2025-01-01 11:00", "문화", "", "김기자", "b"],
+    ]
+    _mini_csv(tmp_path / "ssafy_dataset_news_mini.csv", rows)
+    monkeypatch.setattr(ds, "DATASET_DIR", str(tmp_path))
+    monkeypatch.setattr(ds, "FILES", ["mini"])
+    monkeypatch.setattr(ds, "RATE_PER_SEC", 100000.0)
+    ckpt = str(tmp_path / "ckpt.sqlite")
+
+    ds.run(send=True, limit=1, checkpoint_path=ckpt, producer=FakeProducer(), verbose=True)
+    assert "[1]" in capsys.readouterr().out
+
+    ds.run(send=True, checkpoint_path=ckpt, producer=FakeProducer(), verbose=True)
+    assert "[2]" in capsys.readouterr().out  # 1부터가 아니라 이어서
