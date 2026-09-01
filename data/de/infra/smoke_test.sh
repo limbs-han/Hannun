@@ -7,7 +7,7 @@ export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")"
 [ -f .env ] && source .env
 NN=${NAMENODE_CONTAINER:-infra-namenode-1}
-TOPIC=news.article.realtime.v1
+TOPIC=news.article.raw
 MSG='{"article_id":"smoke","title":"smoke test"}'
 
 echo "[1/3] HDFS: DataNode 1대 생존"

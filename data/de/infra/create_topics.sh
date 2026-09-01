@@ -18,7 +18,7 @@ create() {
   kafka_cli --create --if-not-exists --topic "$1" --partitions "$2" --replication-factor 1
 }
 
-create news.article.realtime.v1 3
+create news.article.raw 3
 # 이용 로그 토픽은 스프린트 4에 활성화
 # create user.events.v1 3
 
