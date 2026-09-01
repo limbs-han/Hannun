@@ -20,6 +20,8 @@ public class ArticleCommandService {
 
     private final ArticleRepository articleRepository;
 
+    // 중복체크 SELECT + INSERT를 트랜잭션 하나로 묶어서 커밋 왕복을 1번으로 줄임(메시지 1건당 트랜잭션 1개는 그대로 유지).
+    @Transactional
     public Article save(ArticleCreateRequest request) {
         Optional<Article> existing = articleRepository.findByLink(request.link());
         if (existing.isPresent()) {

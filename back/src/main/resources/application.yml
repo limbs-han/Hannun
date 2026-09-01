@@ -41,6 +41,9 @@ spring:
       acks: all   # idempotence 기본 활성화라 명시 안 해도 사실상 all이지만, 3-브로커+min-insync=2 구성이라 명시적으로 고정
     listener:
       ack-mode: manual_immediate
+      # 인스턴스당 리스너 스레드 수. 파티션 수(현재 3)에 맞춰서, 인스턴스 하나가 파티션 여러 개를
+      # 배정받아도 순차 처리 안 하고 병렬로 처리하게 함. 파티션 수보다 많아도 남는 스레드는 그냥 대기.
+      concurrency: 3
 
 news:
   kafka:
