@@ -5,7 +5,10 @@ services:
     image: mysql:8.0
     container_name: news-mysql
     restart: unless-stopped
-    mem_limit: 1024m
+    mem_limit: 2048m
+    # innodb_buffer_pool_size 기본값(128MB)이 너무 작음 - 컨테이너 한도(2GB)의 절반을 버퍼풀에 주고,
+    # 나머지는 커넥션별 버퍼/OS 오버헤드용으로 남겨둠.
+    command: --innodb-buffer-pool-size=1G
     environment:
       MYSQL_ROOT_PASSWORD: root1234
       MYSQL_DATABASE: news
@@ -50,7 +53,7 @@ services:
     image: apache/kafka:4.2.1
     container_name: news-kafka-1
     restart: unless-stopped
-    mem_limit: 1024m
+    mem_limit: 2048m
     ports:
       - "9092:9092"       # 외부(크롤러/DE)에서 접속할 부트스트랩 주소 중 하나
     environment: &kafka-common-env
@@ -86,7 +89,7 @@ services:
     image: apache/kafka:4.2.1
     container_name: news-kafka-2
     restart: unless-stopped
-    mem_limit: 1024m
+    mem_limit: 2048m
     ports:
       - "9093:9092"
     environment:
@@ -103,7 +106,7 @@ services:
     image: apache/kafka:4.2.1
     container_name: news-kafka-3
     restart: unless-stopped
-    mem_limit: 1024m
+    mem_limit: 2048m
     ports:
       - "9094:9092"
     environment:
