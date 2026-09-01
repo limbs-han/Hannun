@@ -19,8 +19,9 @@ public class ArticleIngestConsumer {
     private final ObjectMapper objectMapper;
 
     // concurrency는 이 리스너만 개별 지정 - 글로벌로 주면 clustering-completed 리스너까지 같이 늘어나서
-    // HikariCP 풀을 나눠 쓰게 됨(그쪽은 MySQL을 더 무겁게 씀). 파티션 수(현재 3)에 맞춤.
-    @KafkaListener(topics = "${news.kafka.topic.article-ingest}", groupId = "news-write-service", concurrency = "3")
+    // HikariCP 풀을 나눠 쓰게 됨(그쪽은 MySQL을 더 무겁게 씀).
+    // 1차 실험값 = 2 (파티션 3개 그대로, 단계적으로 올려가며 측정 예정: 2 -> 3 -> ...)
+    @KafkaListener(topics = "${news.kafka.topic.article-ingest}", groupId = "news-write-service", concurrency = "2")
     public void consume(String payload, Acknowledgment acknowledgment) throws Exception {
         ArticleIngestMessage message = objectMapper.readValue(payload, ArticleIngestMessage.class);
 
