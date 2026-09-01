@@ -378,6 +378,48 @@
       ],
       "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 19,
+      "title": "Kafka 브로커 메모리 사용률",
+      "description": "cAdvisor 기준 working_set(=OOM 판단 시 실제로 보는 값, 페이지 캐시 중 회수 어려운 부분 포함) / 컨테이너 mem_limit(1GB). 100%에 가까우면 OOM으로 재시작될 수 있음 - 8000msg/s 스트레스 테스트 때 kafka-1이 이래서 재시작됐음.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 81 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{name=~\"news-kafka-[0-9]\"} / container_spec_memory_limit_bytes{name=~\"news-kafka-[0-9]\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 20,
+      "title": "컨테이너별 메모리 사용량 (전체)",
+      "description": "cAdvisor 기준 전체 컨테이너 working_set 메모리. docker stats로 수동 확인하던 걸 대체.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 81 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{name=~\"news-.+\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "bytes", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
     }
   ]
 }
