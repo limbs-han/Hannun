@@ -5,9 +5,12 @@ import com.example.demo.article.dto.ArticleCreateRequest;
 import com.example.demo.article.dto.ClusteringCompletedMessage.ArticleAssignment;
 import com.example.demo.article.repository.ArticleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,6 +22,7 @@ import java.util.stream.Collectors;
 public class ArticleCommandService {
 
     private final ArticleRepository articleRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     @Transactional
     public Article save(ArticleCreateRequest request) {
@@ -30,6 +34,35 @@ public class ArticleCommandService {
         Article article = new Article(request.company(), request.title(), request.link(), request.published(),
                 request.category(), request.categoryStr(), request.reporter(), request.thumbnailUrl());
         return articleRepository.save(article);
+    }
+
+    public void saveAll(List<ArticleCreateRequest> requests) {
+        if (requests.isEmpty()) {
+            return;
+        }
+
+        String valuesPlaceholder = "(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String valuesClause = requests.stream().map(r -> valuesPlaceholder).collect(Collectors.joining(", "));
+        String sql = "INSERT INTO article "
+                + "(company, title, link, published, category, category_str, reporter, thumbnail_url, created_at) "
+                + "VALUES " + valuesClause + " "
+                + "ON DUPLICATE KEY UPDATE link = link";
+
+        OffsetDateTime now = OffsetDateTime.now();
+        List<Object> args = new ArrayList<>();
+        for (ArticleCreateRequest request : requests) {
+            args.add(request.company());
+            args.add(request.title());
+            args.add(request.link());
+            args.add(request.published());
+            args.add(request.category());
+            args.add(request.categoryStr());
+            args.add(request.reporter());
+            args.add(request.thumbnailUrl());
+            args.add(now);
+        }
+
+        jdbcTemplate.update(sql, args.toArray());
     }
 
     @Transactional
