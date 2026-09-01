@@ -32,8 +32,16 @@ def _to_utc_z(kst_str):
 
 def build_record(row):
     link, company, publisher_id, title, day, category_str, reporter, status, article, published, fetched_at = row
-    # 페이지 추출 시각(KST) 우선, 없으면 엑셀 일자의 자정
-    kst = published or f"{day[:4]}-{day[4:6]}-{day[6:8]} 00:00:00"
+    # 페이지 추출 시각(KST) 우선, 없으면 엑셀 일자의 자정. 단 페이지 시각이 엑셀
+    # 일자와 2일 넘게 어긋나면 페이지가 엉뚱한 날짜(오늘 날짜 등)를 노출하는
+    # 것이므로(아시아투데이 실측) 엑셀 일자를 믿는다
+    day_kst = f"{day[:4]}-{day[4:6]}-{day[6:8]} 00:00:00"
+    kst = published or day_kst
+    if published:
+        drift = abs(dt.datetime.strptime(published[:10], "%Y-%m-%d")
+                    - dt.datetime.strptime(day_kst[:10], "%Y-%m-%d"))
+        if drift > dt.timedelta(days=2):
+            kst = day_kst
     category = (category_str or "").split(">")[0].strip() or "OTHER"
     return {
         "company": company,

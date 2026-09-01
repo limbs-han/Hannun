@@ -108,3 +108,16 @@ def test_export_builds_valid_article_v1(tmp_path, monkeypatch):
     assert record["published"] == "2024-07-01T01:00:00Z"  # KST 10:00 → UTC 01:00
     assert record["source_type"] == "DATASET"
     assert record["category"] == "정치"
+
+
+def test_export_distrusts_drifted_page_date():
+    # 페이지가 오늘 날짜를 노출한 경우: 엑셀 일자(20240707)를 믿는다
+    row = ("https://a.com/1", "아시아투데이", "asiatoday", "제목", "20240707",
+           "정치>선거", None, "full", "본문 " * 50, "2026-08-31 15:00:00", "2026-09-01T00:00:00Z")
+    record = ex.build_record(row)
+    assert record["published"] == "2024-07-06T15:00:00Z"  # KST 07-07 00:00 → UTC
+
+    # 하루 이내 차이(자정 넘김 등)는 페이지 시각을 그대로 쓴다
+    row = row[:9] + ("2024-07-08 01:00:00",) + row[10:]
+    record = ex.build_record(row)
+    assert record["published"] == "2024-07-07T16:00:00Z"
