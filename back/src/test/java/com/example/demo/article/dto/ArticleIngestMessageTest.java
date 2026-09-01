@@ -11,25 +11,27 @@ class ArticleIngestMessageTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // 실제로 크롤러가 보내는 형식 그대로: camelCase + 표준 ISO-8601(타임존 포함)
+    // 실제로 크롤러가 보내는 형식 그대로: snake_case + 표준 ISO-8601(타임존 포함)
     @Test
     void 크롤러가_보내는_실제_형식을_파싱한다() {
         String json = """
                 {
-                  "company": "세계일보",
-                  "title": "테스트 기사",
-                  "link": "https://test.example.com/1",
-                  "published": "2025-04-21T23:59:37+09:00",
-                  "category": "연예일반",
-                  "categoryStr": "연예일반",
-                  "reporter": null,
-                  "thumbnailUrl": null
+                  "company": "MBN",
+                  "title": "[날씨] 새해 첫날 큰 추위 없어…동해안 대기 건조",
+                  "link": "https://www.mbn.co.kr/news/life/5084855?page=1&date=20250101",
+                  "published": "2025-01-01T19:48:00+09:00",
+                  "category": "생활/건강",
+                  "category_str": "뉴스 > 생활/건강",
+                  "reporter": "정예은",
+                  "thumbnail_url": null
                 }
                 """;
 
         ArticleIngestMessage message = objectMapper.readValue(json, ArticleIngestMessage.class);
 
-        assertThat(message.categoryStr()).isEqualTo("연예일반");
-        assertThat(message.published()).isEqualTo(OffsetDateTime.parse("2025-04-21T23:59:37+09:00"));
+        assertThat(message.company()).isEqualTo("MBN");
+        assertThat(message.categoryStr()).isEqualTo("뉴스 > 생활/건강");
+        assertThat(message.thumbnailUrl()).isNull();
+        assertThat(message.published()).isEqualTo(OffsetDateTime.parse("2025-01-01T19:48:00+09:00"));
     }
 }
