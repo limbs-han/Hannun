@@ -115,12 +115,11 @@
       "linewidth": 2,
       "nullPointMode": "connected",
       "targets": [
-        { "expr": "hikaricp_connections_active{pool=\"HikariPool-1\"}", "legendFormat": "active", "refId": "A" },
-        { "expr": "hikaricp_connections_idle{pool=\"HikariPool-1\"}", "legendFormat": "idle", "refId": "B" },
-        { "expr": "hikaricp_connections_pending{pool=\"HikariPool-1\"}", "legendFormat": "pending(대기)", "refId": "C" },
-        { "expr": "hikaricp_connections_max{pool=\"HikariPool-1\"}", "legendFormat": "max(설정값)", "refId": "D" }
+        { "expr": "hikaricp_connections_active{pool=\"HikariPool-1\"}", "legendFormat": "active - {{instance}}", "refId": "A" },
+        { "expr": "hikaricp_connections_idle{pool=\"HikariPool-1\"}", "legendFormat": "idle - {{instance}}", "refId": "B" },
+        { "expr": "hikaricp_connections_pending{pool=\"HikariPool-1\"}", "legendFormat": "pending(대기) - {{instance}}", "refId": "C" },
+        { "expr": "hikaricp_connections_max{pool=\"HikariPool-1\"}", "legendFormat": "max(설정값) - {{instance}}", "refId": "D" }
       ],
-      "seriesOverrides": [{ "alias": "max(설정값)", "dashes": true, "linewidth": 1 }],
       "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     },
@@ -330,6 +329,54 @@
       ],
       "seriesOverrides": [{ "alias": "buffer pool size(설정값)", "dashes": true, "linewidth": 1 }],
       "yaxes": [{ "format": "bytes", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 17,
+      "title": "DB 커넥션 획득 vs 사용 시간 (CPU 바운드 vs IO 바운드 판별용)",
+      "description": "acquire = 풀에서 커넥션 뽑아오는 데 걸린 시간(짧아야 정상, 길면 풀 부족/경합). usage = 커넥션 하나 붙잡고 쿼리 실행하는 데 걸린 시간(=DB 왕복시간에 가까움). CPU는 안 남는데 처리량이 안 나올 때, acquire는 짧고 usage만 크면 CPU가 아니라 DB 왕복(IO) 때문이라는 뜻.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 73 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(hikaricp_connections_acquire_seconds_sum[1m]) / rate(hikaricp_connections_acquire_seconds_count[1m])",
+          "legendFormat": "acquire avg - {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(hikaricp_connections_usage_seconds_sum[1m]) / rate(hikaricp_connections_usage_seconds_count[1m])",
+          "legendFormat": "usage avg - {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 18,
+      "title": "JVM 스레드 상태 분포",
+      "description": "runnable=실제 CPU에서 실행 중, waiting/timed-waiting=뭔가(IO, 락, 큐 등) 기다리는 중, blocked=락 대기. JVM 전체 스레드 합산이라 컨슈머 스레드만 콕 집은 값은 아니지만, waiting류가 대부분이면 CPU보다 대기(IO 등)가 병목이라는 보조 근거가 됨.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 73 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "stack": true,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(jvm_threads_states_threads) by (state)",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     }
   ]
