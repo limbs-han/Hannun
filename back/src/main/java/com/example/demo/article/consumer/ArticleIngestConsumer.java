@@ -3,6 +3,7 @@ package com.example.demo.article.consumer;
 import com.example.demo.article.dto.ArticleCreateRequest;
 import com.example.demo.article.dto.ArticleIngestMessage;
 import com.example.demo.article.service.ArticleCommandService;
+import io.micrometer.core.annotation.Timed;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -20,6 +21,8 @@ public class ArticleIngestConsumer {
     private final ArticleCommandService articleCommandService;
     private final ObjectMapper objectMapper;
 
+    @Timed(value = "message.processing.duration", extraTags = {"consumer", "article-ingest"},
+            description = "배치 1건(JSON 파싱 + DB 저장) 전체 처리 시간")
     @KafkaListener(topics = "${news.kafka.topic.article-ingest}", groupId = "news-write-service", concurrency = "3",
             containerFactory = "batchListenerContainerFactory")
     public void consume(List<String> payloads, Acknowledgment acknowledgment) throws Exception {

@@ -6,6 +6,7 @@ import com.example.demo.article.service.ArticleCommandService;
 import com.example.demo.issue.service.IssueCommandService;
 import com.example.demo.viewpointgroup.domain.ViewpointGroup;
 import com.example.demo.viewpointgroup.service.ViewpointGroupCommandService;
+import io.micrometer.core.annotation.Timed;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -31,6 +32,8 @@ public class ClusteringCompletedConsumer {
     private final IssueCommandService issueCommandService;
     private final ObjectMapper objectMapper;
 
+    @Timed(value = "message.processing.duration", extraTags = {"consumer", "clustering-completed"},
+            description = "클러스터링 결과 메시지 1건 전체 처리 시간")
     @KafkaListener(topics = "${news.kafka.topic.clustering-completed}", groupId = "news-write-service")
     public void consume(String payload, Acknowledgment acknowledgment) throws Exception {
         ClusteringCompletedMessage message = objectMapper.readValue(payload, ClusteringCompletedMessage.class);
