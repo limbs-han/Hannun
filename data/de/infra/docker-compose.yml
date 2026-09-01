@@ -74,6 +74,8 @@ services:
       # NameNode 가 root 로 돌아 / 가 root 소유 — 무인증(simple auth) HDFS 라
       # 클라이언트가 선언한 유저를 그대로 믿으므로 root 로 선언해 쓰기 권한 확보
       HADOOP_USER_NAME: root
+      # 적재 잡(kafka_to_bronze)이 읽음 — .env 에서 주입, 로컬 미설정이면 빈 값
+      KAFKA_BROKER: ${KAFKA_BROKER:-}
     # ponytail: Spark driver 가 이 컨테이너 안에서 돌므로 여유 필요 — EC2 스펙 확인 후 조정
     mem_limit: 2g
     ports:
