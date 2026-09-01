@@ -11,7 +11,7 @@ import os
 import re
 import sqlite3
 
-from openpyxl import load_workbook
+import pandas
 
 from crawler.rss_collector import encode_link
 
@@ -54,9 +54,10 @@ def load_jobs(xlsx_dir, db_path):
     files = sorted(p for p in glob.glob(os.path.join(xlsx_dir, "NewsResult_*.xlsx"))
                    if XLSX_NAME.search(os.path.basename(p)))
     for path in files:
-        workbook = load_workbook(path, read_only=True)
-        rows = workbook.active.iter_rows(min_row=2, values_only=True)
-        for row in rows:
+        # 빅카인즈 xlsx 는 시트 메타데이터가 없어 openpyxl read_only 가 0행을
+        # 돌려준다(실측). pandas 는 정상적으로 읽는다
+        frame = pandas.read_excel(path, header=0, dtype=str).fillna("")
+        for row in frame.itertuples(index=False, name=None):
             # 컬럼: 0=뉴스식별자 1=일자 2=언론사 3=기고자 4=제목 5=통합분류1 ... 16=본문 17=URL 18=분석제외
             company = str(row[2] or "").strip()
             url = str(row[17] or "").strip()
@@ -78,7 +79,6 @@ def load_jobs(xlsx_dir, db_path):
                  str(row[16] or "").strip() or None),
             ).rowcount
             stats["loaded" if inserted else "dup"] += 1
-        workbook.close()
         logger.info("%s 적재: %s", os.path.basename(path), stats)
     conn.commit()
     conn.close()
