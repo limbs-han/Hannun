@@ -20,6 +20,7 @@ public class ArticleCommandService {
 
     private final ArticleRepository articleRepository;
 
+    @Transactional
     public Article save(ArticleCreateRequest request) {
         Optional<Article> existing = articleRepository.findByLink(request.link());
         if (existing.isPresent()) {

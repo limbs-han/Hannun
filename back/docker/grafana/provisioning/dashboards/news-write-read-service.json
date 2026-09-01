@@ -262,6 +262,75 @@
           }
         }
       ]
+    },
+    {
+      "id": 13,
+      "title": "Kafka DLQ 유입 건수 (5분 구간)",
+      "description": "재시도 다 실패해서 DLQ(-dlt 토픽)로 빠진 메시지 건수(최근 5분 구간 기준). 0이 정상, 올라가면 그 토픽 처리 중 뭔가 계속 깨지고 있다는 뜻.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 57 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(increase(kafka_topic_partition_current_offset{topic=~\".*-dlt\"}[5m])) by (topic)",
+          "legendFormat": "{{topic}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 15,
+      "title": "InnoDB 버퍼풀 사용률",
+      "description": "설정된 버퍼풀 크기 대비 실제 데이터가 채워진 비율. 계속 100%에 가까우면 버퍼풀이 부족해서 캐싱 못 하고 디스크 I/O가 늘어나고 있다는 뜻 - 늘리는 걸 고려.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 65 },
+      "lines": true,
+      "fill": 2,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "mysql_global_status_buffer_pool_pages{state=\"data\"} / ignoring(state) sum without(state) (mysql_global_status_buffer_pool_pages)",
+          "legendFormat": "usage ratio",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 16,
+      "title": "MySQL 컨테이너 메모리 사용량",
+      "description": "innodb_buffer_pool_bytes_data = 버퍼풀 안에서 실제 데이터가 차지하는 바이트. 컨테이너 mem_limit(현재 2GB)에 근접하면 OOM 위험 - docker stats로도 같이 확인 필요(이 지표는 MySQL 내부 관점이라 커넥션 버퍼 등 그 외 오버헤드는 안 잡힘).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 65 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "mysql_global_status_innodb_buffer_pool_bytes_data",
+          "legendFormat": "buffer pool bytes used",
+          "refId": "A"
+        },
+        {
+          "expr": "mysql_global_variables_innodb_buffer_pool_size",
+          "legendFormat": "buffer pool size(설정값)",
+          "refId": "B"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "buffer pool size(설정값)", "dashes": true, "linewidth": 1 }],
+      "yaxes": [{ "format": "bytes", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
     }
   ]
 }

@@ -18,7 +18,7 @@ public class ArticleIngestConsumer {
     private final ArticleCommandService articleCommandService;
     private final ObjectMapper objectMapper;
 
-    @KafkaListener(topics = "${news.kafka.topic.article-ingest}", groupId = "news-write-service")
+    @KafkaListener(topics = "${news.kafka.topic.article-ingest}", groupId = "news-write-service", concurrency = "3")
     public void consume(String payload, Acknowledgment acknowledgment) throws Exception {
         ArticleIngestMessage message = objectMapper.readValue(payload, ArticleIngestMessage.class);
 
