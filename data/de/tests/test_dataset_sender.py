@@ -28,14 +28,27 @@ class FakeProducer:
     def __init__(self):
         self.messages = []
 
-    def produce(self, topic, key, value):
+    def produce(self, topic, key, value, on_delivery=None):
         self.messages.append((key, value))
+        if on_delivery:
+            on_delivery(None, None)  # 전달 성공
 
     def poll(self, t):
         pass
 
     def flush(self, t=None):
-        pass
+        return 0
+
+
+class BrokenProducer(FakeProducer):
+    """전달이 전부 실패하는 프로듀서 — 브로커에 못 붙는 상황."""
+
+    def produce(self, topic, key, value, on_delivery=None):
+        if on_delivery:
+            on_delivery("Connect failed", None)
+
+    def flush(self, t=None):
+        return 3  # 미확인 잔량
 
 
 def _mini_csv(path, rows):
@@ -71,3 +84,21 @@ def test_run_sends_dedups_and_resumes(tmp_path, monkeypatch):
     stats = ds.run(send=True, checkpoint_path=ckpt, producer=p3)  # 완주 후 재실행
     assert stats == {"sent": 0, "dedup": 0, "invalid": 0}
     assert p3.messages == []
+
+
+def test_run_refuses_to_checkpoint_undelivered(tmp_path, monkeypatch):
+    import pytest, sqlite3
+    rows = [["동아일보", "기사1", "https://a.com/1", "2025-01-01 10:00", "문화", "", "김기자", "b"]]
+    _mini_csv(tmp_path / "ssafy_dataset_news_mini.csv", rows)
+    monkeypatch.setattr(ds, "DATASET_DIR", str(tmp_path))
+    monkeypatch.setattr(ds, "FILES", ["mini"])
+    monkeypatch.setattr(ds, "RATE_PER_SEC", 100000.0)
+    ckpt = str(tmp_path / "ckpt.sqlite")
+
+    with pytest.raises(RuntimeError, match="체크포인트를 기록하지 않았습니다"):
+        ds.run(send=True, checkpoint_path=ckpt, producer=BrokenProducer())
+
+    # 체크포인트에 거짓 완료가 남지 않아 재실행하면 다시 보낸다
+    good = FakeProducer()
+    stats = ds.run(send=True, checkpoint_path=ckpt, producer=good)
+    assert stats["sent"] == 1 and len(good.messages) == 1
