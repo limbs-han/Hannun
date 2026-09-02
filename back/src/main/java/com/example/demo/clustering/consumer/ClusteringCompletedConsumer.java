@@ -67,7 +67,7 @@ public class ClusteringCompletedConsumer {
         }
 
         issueCommandService.applyClusteringResult(message.clusterId(), message.category(), message.factSummary(),
-                message.clusteredAt());
+                message.commonFactsBriefing(), message.clusteredAt());
 
         acknowledgment.acknowledge();
     }

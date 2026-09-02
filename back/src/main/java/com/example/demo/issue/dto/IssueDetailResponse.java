@@ -13,6 +13,7 @@ public record IssueDetailResponse(
         Integer pressCount,
         Integer articleCount,
         String factSummary,
+        List<String> commonFactsBriefing,
         StanceRatio stanceRatio,
         // 요청으로 받은 stance 그대로. 프론트가 탭 활성 표시에 씀.
         String selectedStance,

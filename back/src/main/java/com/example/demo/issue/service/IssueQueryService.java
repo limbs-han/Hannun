@@ -92,6 +92,7 @@ public class IssueQueryService {
         return new IssueDetailResponse(issue.getClusterId(), issue.getCategory(),
                 issue.getFirstReportedAt(), issue.getLastReportedAt(),
                 issue.getPressCount(), issue.getArticleCount(), issue.getFactSummary(),
+                emptyIfNull(issue.getCommonFactsBriefing()),
                 stanceRatio, stance, viewpointGroups, viewpointGroupPage);
     }
 
@@ -139,7 +140,13 @@ public class IssueQueryService {
 
     private IssueSummary toSummary(Issue issue) {
         return new IssueSummary(issue.getClusterId(), issue.getCategory(), issue.getPressCount(),
-                issue.getArticleCount(), issue.getScore(), issue.getFactSummary());
+                issue.getArticleCount(), issue.getScore(), issue.getFactSummary(),
+                emptyIfNull(issue.getCommonFactsBriefing()));
+    }
+
+    // 아직 재클러스터링 안 된 옛날 이슈는 DB에 null로 남아있음 - 응답 JSON은 null 대신 빈 배열로 통일.
+    private List<String> emptyIfNull(List<String> commonFactsBriefing) {
+        return commonFactsBriefing == null ? List.of() : commonFactsBriefing;
     }
 
     private ViewpointGroupSummary toViewpointGroupSummary(ViewpointGroup group) {
