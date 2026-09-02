@@ -1,6 +1,5 @@
 package com.example.demo.issue.domain;
 
-import com.example.demo.common.converter.StringListJsonConverter;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -29,10 +28,12 @@ public class Issue {
     @Column(columnDefinition = "TEXT")
     private String factSummary;
 
-    // 스탠스와 무관하게 다들 동의하는 사실 나열(상세/피드 응답 공용). 개별 문장 단위로 쿼리할 일이 없어서
-    // 별도 테이블(@ElementCollection) 대신 JSON 컬럼 하나로 - 피드 목록 조회할 때 N+1 안 나게.
-    @Convert(converter = StringListJsonConverter.class)
-    @Column(columnDefinition = "JSON")
+    // 스탠스와 무관하게 다들 동의하는 사실 나열(상세/피드 응답 공용). 별도 테이블(issue_common_facts_briefing)로
+    // 분리 - 문장 개수가 적어서 N+1 영향은 크지 않다고 보고 단순한 쪽 선택. @OrderColumn으로 순서 보장.
+    @ElementCollection
+    @CollectionTable(name = "issue_common_facts_briefing", joinColumns = @JoinColumn(name = "issue_id"))
+    @OrderColumn(name = "sort_order")
+    @Column(name = "fact", columnDefinition = "TEXT")
     private List<String> commonFactsBriefing;
 
     @Column(nullable = false)
