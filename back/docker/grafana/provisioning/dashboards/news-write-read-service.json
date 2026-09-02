@@ -596,6 +596,53 @@
       ],
       "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 26,
+      "title": "InnoDB 버퍼풀 캐시 미스율",
+      "description": "buffer_pool_reads(캐시 미스 -> 디스크에서 페이지 읽음) / buffer_pool_read_requests(논리 읽기 요청 총량). Redis 히트율 패널과 같은 개념 - 낮을수록 좋음. 올라가기 시작하면 인덱스(특히 link 유니크 인덱스)가 버퍼풀에 못 들어가고 있다는 신호.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 113 },
+      "lines": true,
+      "fill": 2,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(mysql_global_status_innodb_buffer_pool_reads[5m]) / rate(mysql_global_status_innodb_buffer_pool_read_requests[5m])",
+          "legendFormat": "cache miss ratio",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 27,
+      "title": "MySQL 실제 물리 디스크 I/O (읽기/쓰기 건수)",
+      "description": "innodb_data_reads/writes - InnoDB가 실제로 디스크에 읽고 쓴 횟수(초당). 캐시 미스율 패널과 같이 봐서, 미스율이 오를 때 실제 디스크 I/O도 같이 느는지 교차 확인용.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 113 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(mysql_global_status_innodb_data_reads[5m])",
+          "legendFormat": "reads/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(mysql_global_status_innodb_data_writes[5m])",
+          "legendFormat": "writes/s",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
     }
   ]
 }
