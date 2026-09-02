@@ -49,8 +49,10 @@ public class IssueCommandService {
                                        List<String> commonFactsBriefing, OffsetDateTime clusteredAt) {
         ArticleClusterAggregate aggregate = articleQueryService.aggregateByClusterId(clusterId);
         if (aggregate.articleCount() == null || aggregate.articleCount() == 0) {
-            throw new IllegalStateException(
-                    "clusterId=%d 이벤트를 처리하려는데 반영된 Article이 없음".formatted(clusterId));
+            // 클러스터가 참조하는 링크가 전부 우리 DB에 없는 경우(백필 누락분 등) - 재시도해도 똑같이
+            // 실패하는 영구적인 상황이라 DLQ로 보낼 이유가 없음. 그냥 이 이슈 생성/갱신만 건너뜀.
+            log.warn("clusterId={} 이벤트가 참조하는 article이 우리 DB에 하나도 없어서 건너뜀", clusterId);
+            return;
         }
 
         int articleCount = aggregate.articleCount().intValue();
