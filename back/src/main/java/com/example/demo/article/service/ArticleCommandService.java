@@ -6,6 +6,7 @@ import com.example.demo.article.dto.ClusteringCompletedMessage.ArticleAssignment
 import com.example.demo.article.repository.ArticleRepository;
 import io.micrometer.core.annotation.Timed;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,9 @@ import java.util.stream.Collectors;
 public class ArticleCommandService {
 
     private final ArticleRepository articleRepository;
+
+    // saveAll()(article-ingest 배치 전용)만 별도 풀을 씀 - 다른 곳(articleRepository 등)은 그대로 기본 풀 사용.
+    @Qualifier("articleIngestJdbcTemplate")
     private final JdbcTemplate jdbcTemplate;
 
     @Transactional

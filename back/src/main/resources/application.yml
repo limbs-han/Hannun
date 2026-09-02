@@ -48,6 +48,17 @@ news:
       article-ingest: news.article.raw          # 크롤러 -> 우리: 원본 기사 저장 요청
       clustering-completed: news.clustering.completed  # DE -> 우리: 클러스터링 완료, clusterId 벌크 반영
       search-executed: news.search.executed     # 우리(검색 API) -> 우리(인기 검색어 집계 컨슈머): 검색 실행 이벤트
+  # article-ingest(배치 컨슈머)만 별도 HikariCP 풀로 분리 - Bulkhead 패턴.
+  # 커넥션을 오래 물고 있는 배치 워크로드가 공용 풀(기본 10개)을 잠식해서 읽기 API/다른 컨슈머가
+  # 굶는 걸 막기 위함. MySQL max_connections=151에 여유 충분(실측 22개 사용 중)해서 총량 증가는 안전.
+  datasource:
+    article-ingest:
+      url: jdbc:mysql://localhost:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
+      username: news
+      password: news1234
+      hikari:
+        pool-name: ArticleIngestPool
+        maximum-pool-size: 6   # 파티션 증설(3->6) 대비 여유 있게 - 지금 파티션 3개론 최대 3개면 충분
 
 management:
   endpoints:
