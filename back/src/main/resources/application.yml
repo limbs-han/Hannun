@@ -57,3 +57,17 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      # 기본값은 sum/count(평균)만 나가서 p99를 못 뽑음 - 읽기 API 부하테스트 때
+      # histogram_quantile()로 p50/p95/p99 계산하려고 http 요청 타이머에만 버킷 활성화.
+      # message.processing.duration/db.write.duration도 같은 이유로 추가 - 쓰기 쪽 처리량 대비
+      # p99도 나중에 같은 방식으로 비교하려고.
+      percentiles-histogram:
+        http.server.requests: true
+        message.processing.duration: true
+        db.write.duration: true
+      # 버킷 경계를 얇게(10~500ms 구간 촘촘히) 잡아서 캐시 히트(수 ms) vs 미스(DB 왕복) 구간을 구분되게 함.
+      slo:
+        http.server.requests: 10ms,25ms,50ms,100ms,200ms,500ms,1s,2s
+        message.processing.duration: 50ms,100ms,200ms,500ms,1s,2s,5s
+        db.write.duration: 10ms,50ms,100ms,200ms,500ms,1s

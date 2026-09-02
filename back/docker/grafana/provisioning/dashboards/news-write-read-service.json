@@ -125,8 +125,8 @@
     },
     {
       "id": 6,
-      "title": "읽기 API 평균 응답시간 (/api/issues)",
-      "description": "Redis(issueFeed/issueDetail) 히트가 많을수록 이 값이 낮게 유지됨.",
+      "title": "읽기 API 응답시간 (평균 vs p99, /api/issues|search)",
+      "description": "평균만 보면 캐시 히트 다수에 가려서 꼬리 지연(느린 요청 1%)이 안 보임 - p99를 같이 봐야 캐시 미스/DB 폴백 구간에서 실제로 얼마나 느려지는지 잡힘.",
       "type": "graph",
       "datasource": "Prometheus",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
@@ -136,11 +136,17 @@
       "nullPointMode": "connected",
       "targets": [
         {
-          "expr": "rate(http_server_requests_seconds_sum{uri=~\"/api/issues.*\"}[5m]) / rate(http_server_requests_seconds_count{uri=~\"/api/issues.*\"}[5m])",
-          "legendFormat": "{{uri}}",
+          "expr": "rate(http_server_requests_seconds_sum{uri=~\"/api/(issues|search).*\"}[5m]) / rate(http_server_requests_seconds_count{uri=~\"/api/(issues|search).*\"}[5m])",
+          "legendFormat": "avg - {{uri}}",
           "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{uri=~\"/api/(issues|search).*\"}[5m])) by (le, uri))",
+          "legendFormat": "p99 - {{uri}}",
+          "refId": "B"
         }
       ],
+      "seriesOverrides": [{ "alias": "/^p99/", "linewidth": 1, "dashes": true }],
       "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     },
@@ -238,14 +244,14 @@
     },
     {
       "id": 12,
-      "title": "MySQL 쿼리 Digest Top 10 - 평균 처리시간 (2단계: 어떤 SQL인지)",
-      "description": "performance_schema 기반. digest_text에 실제 SQL 패턴(파라미터는 ? 마스킹)이 그대로 나옴 — 로그 파일 안 열어봐도 여기서 바로 원인 쿼리 확인.",
+      "title": "MySQL 쿼리 Digest Top 10 - 평균 처리시간 (2단계: 어떤 SQL인지, 사용자 트래픽만)",
+      "description": "performance_schema 기반. digest_text에 실제 SQL 패턴(파라미터는 ? 마스킹)이 그대로 나옴 — 로그 파일 안 열어봐도 여기서 바로 원인 쿼리 확인. LOAD DATA INFILE(백필용 대량 적재)은 사용자 트래픽이 아니라서 제외.",
       "type": "table",
       "datasource": "Prometheus",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 48 },
       "targets": [
         {
-          "expr": "topk(10, mysql_perf_schema_events_statements_seconds_total / clamp_min(mysql_perf_schema_events_statements_total, 1))",
+          "expr": "topk(10, mysql_perf_schema_events_statements_seconds_total{digest_text!~\"LOAD DATA.*\"} / clamp_min(mysql_perf_schema_events_statements_total{digest_text!~\"LOAD DATA.*\"}, 1))",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -435,16 +441,22 @@
       "targets": [
         {
           "expr": "sum(rate(message_processing_duration_seconds_sum[2m])) by (consumer) / sum(rate(message_processing_duration_seconds_count[2m])) by (consumer)",
-          "legendFormat": "{{consumer}}",
+          "legendFormat": "avg - {{consumer}}",
           "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(message_processing_duration_seconds_bucket[2m])) by (le, consumer))",
+          "legendFormat": "p99 - {{consumer}}",
+          "refId": "B"
         }
       ],
+      "seriesOverrides": [{ "alias": "/^p99/", "linewidth": 1, "dashes": true }],
       "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     },
     {
       "id": 22,
-      "title": "DB 벌크 upsert 처리 시간",
+      "title": "DB 벌크 upsert 처리 시간 (평균 vs p99)",
       "description": "@Timed로 측정한 ArticleCommandService.saveAll()만의 순수 DB 왕복 시간 - 21번 패널(전체)에서 이 값을 빼면 JSON 파싱 등 나머지 구간 시간이 나옴. HikariCP usage 지표랑 교차검증용.",
       "type": "graph",
       "datasource": "Prometheus",
@@ -456,11 +468,91 @@
       "targets": [
         {
           "expr": "sum(rate(db_write_duration_seconds_sum[2m])) by (operation) / sum(rate(db_write_duration_seconds_count[2m])) by (operation)",
-          "legendFormat": "{{operation}}",
+          "legendFormat": "avg - {{operation}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(db_write_duration_seconds_bucket[2m])) by (le, operation))",
+          "legendFormat": "p99 - {{operation}}",
+          "refId": "B"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "/^p99/", "linewidth": 1, "dashes": true }],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 23,
+      "title": "JVM 힙 메모리 사용량",
+      "description": "Eden/Survivor/Tenured 영역별 사용량(실선) vs 최대치(점선). Tenured가 계속 최대치에 붙어있으면 Full GC가 잦아지고 있다는 뜻.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 97 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{area=\"heap\"}",
+          "legendFormat": "used - {{id}} ({{instance}})",
+          "refId": "A"
+        },
+        {
+          "expr": "jvm_memory_max_bytes{area=\"heap\"}",
+          "legendFormat": "max - {{id}} ({{instance}})",
+          "refId": "B"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "/^max/", "dashes": true, "linewidth": 1 }],
+      "yaxes": [{ "format": "bytes", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 24,
+      "title": "GC 일시정지 시간",
+      "description": "minor GC(Young)는 자주 짧게, major GC(Full)는 드물게 나와야 정상. major GC가 잦아지거나 pause time이 길어지면 힙 부족 신호.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 97 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_sum[2m])",
+          "legendFormat": "{{action}} ({{instance}})",
           "refId": "A"
         }
       ],
       "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 25,
+      "title": "CPU 사용률 (프로세스 vs 시스템 전체)",
+      "description": "process=이 JVM 프로세스만의 CPU 사용률, system=컨테이너/호스트 전체 CPU 사용률. process가 system보다 훨씬 낮은데 응답이 느리면 CPU가 아니라 다른 병목(IO 등)일 가능성이 큼.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 105 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "process_cpu_usage",
+          "legendFormat": "process - {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "system_cpu_usage",
+          "legendFormat": "system - {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     }
   ]
