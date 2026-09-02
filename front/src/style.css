@@ -170,6 +170,7 @@ footer b{font-family:'Noto Sans KR';font-weight:800}
  .feed article{margin:0 0 10px;padding:20px;border-radius:17px}
  .feed h3{font-size:18px}
  .feed article>b{display:inline-block;margin-top:14px}
+ .feed-briefing-preview{display:none}
  .back{margin-top:18px}
  .detail{margin-top:8px;padding:36px 20px;border-radius:20px}
  .detail h1{font-size:29px;letter-spacing:-1.2px}
@@ -224,6 +225,7 @@ nav .active{background:transparent;color:#424b1f;position:relative}
 nav .active:after{display:block;content:'';position:absolute;left:14px;right:14px;bottom:0;height:3px;background:#59652b;border-radius:3px 3px 0 0}
 
 main.wrap{min-height:calc(100vh - 218px)}
+.feed{width:min(820px,100%);margin-inline:auto;transition:transform .45s cubic-bezier(.22,1,.36,1)}
 .title>div{background:#e9e8e2}
 .title button{font-family:'Noto Serif KR'}
 .title button.active{color:#424b1f}
@@ -235,6 +237,18 @@ main.wrap{min-height:calc(100vh - 218px)}
 .feed article:hover>b{background:#eef0e4;color:#4f5c16}
 .more{border:1px solid #d5d3ca;border-radius:10px;background:rgba(255,255,252,.65);color:#5e6058}
 .more:hover{background:#fff}
+.feed article{display:block;overflow:visible;outline:none}
+.feed article:focus-visible{border-color:#8f9868;box-shadow:0 0 0 3px rgba(89,101,43,.14)}
+.feed-briefing-preview{position:absolute;z-index:4;left:calc(100% + 18px);top:50%;display:grid;align-content:start;width:340px;min-height:410px;grid-template-columns:1fr;gap:14px;padding:25px 25px;border:1px solid rgba(151,155,127,.95);border-radius:14px;background:rgba(255,255,252,.98);box-shadow:0 14px 36px rgba(39,40,34,.12);opacity:0;visibility:hidden;transform:translate(-14px,-50%);pointer-events:none;transition:opacity .25s,transform .42s cubic-bezier(.22,1,.36,1),visibility .25s}
+.feed-briefing-preview::before{content:'';position:absolute;left:-9px;top:calc(50% - 8px);width:16px;height:16px;border-left:1px solid #979b7f;border-bottom:1px solid #979b7f;background:#fffffc;transform:rotate(45deg)}
+.feed article:first-of-type .feed-briefing-preview{top:0;transform:translateX(-14px)}
+.feed article:first-of-type .feed-briefing-preview::before{top:40px}
+.feed article:nth-of-type(n+4) .feed-briefing-preview{top:auto;bottom:0;transform:translateX(-14px)}
+.feed article:nth-of-type(n+4) .feed-briefing-preview::before{top:auto;bottom:40px}
+.feed-briefing-preview strong{font-size:13px;line-height:1.65;letter-spacing:.8px;color:#59652b}
+.feed-briefing-preview ol{display:grid;gap:13px;margin:8px 0 0;padding:18px 0 0 22px;border-top:1px solid #e2e1da;color:#55574f;font-size:15px;line-height:1.75}
+@media(min-width:1280px){.feed article::after{content:'';position:absolute;top:0;right:-180px;width:180px;height:100%;pointer-events:none}.feed article:hover::after{pointer-events:auto}.feed:has(article:hover),.feed:has(article:focus-visible){transform:translateX(-180px)}.feed article:hover,.feed article:focus-visible{z-index:3;border-color:#7d8753;background:#fff;box-shadow:inset 4px 0 0 #59652b,0 10px 28px rgba(39,40,34,.11)}.feed article:hover .feed-briefing-preview,.feed article:focus-visible .feed-briefing-preview{opacity:1;visibility:visible;transform:translate(0,-50%)}.feed article:first-of-type:hover .feed-briefing-preview,.feed article:first-of-type:focus-visible .feed-briefing-preview,.feed article:nth-of-type(n+4):hover .feed-briefing-preview,.feed article:nth-of-type(n+4):focus-visible .feed-briefing-preview{transform:translateX(0)}}
+@media(max-width:1279px){.feed-briefing-preview{display:none}}
 
 .back{border-radius:7px;color:#6d6f67}
 .back:hover{background:#ebeae4;color:#34352f}
@@ -292,9 +306,7 @@ footer b{font-family:'Noto Serif KR'}
  flex-grow:1 !important;
  transition:flex-grow .65s cubic-bezier(.22,1,.36,1),background-color .35s,box-shadow .25s,color .25s
 }
-.detail-stance.ratio-mode button:nth-child(1){flex-grow:32 !important}
-.detail-stance.ratio-mode button:nth-child(2){flex-grow:46 !important}
-.detail-stance.ratio-mode button:nth-child(3){flex-grow:22 !important}
+.detail-stance.ratio-mode button{flex-grow:var(--ratio) !important}
 .detail-stance button b{
  display:inline-block;
  max-width:0;
@@ -311,6 +323,7 @@ footer b{font-family:'Noto Serif KR'}
 }
 .view{padding-top:14px}
 .view .group{border:0}
+.detail,.briefing,.view{width:min(960px,100%);margin-left:auto;margin-right:auto}
 
 @media(max-width:680px){
  .detail .detail-stance{width:100%;height:31px;margin-top:24px}
