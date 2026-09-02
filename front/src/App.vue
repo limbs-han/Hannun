@@ -206,6 +206,10 @@ function stancePercent(value: Stance) {
 
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
 function briefingPreview(issue: Issue) { return issue.briefing?.length ? issue.briefing : [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`] }
+function middleEllipsisParts(text: string) {
+  const tailLength = Math.min(20, Math.max(10, Math.floor(text.length * .24)))
+  return { head: text.slice(0, -tailLength), tail: text.slice(-tailLength) }
+}
 
 async function loadGroupArticles(groupId: number) {
   const cursor = groupCursor.value[groupId]
@@ -337,7 +341,7 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', handlePopState); 
 
       <section class="briefing">
         <div class="briefing-head"><div><label>COMMON FACTS</label><h2>공통사실 브리핑</h2></div><small>{{ briefingFacts.length }}개 핵심 사실</small></div>
-        <ol class="briefing-sentences"><li v-for="fact in briefingFacts" :key="fact.text"><span>{{ fact.text }}</span><a v-if="fact.source && fact.url" :href="fact.url" target="_blank" rel="noopener noreferrer" :aria-label="`${fact.source} 출처 기사 열기`">{{ fact.source }}</a></li></ol>
+        <ol class="briefing-sentences"><li v-for="fact in briefingFacts" :key="fact.text"><span class="briefing-text" :title="fact.text"><span class="briefing-text-head">{{ middleEllipsisParts(fact.text).head }}</span><span class="briefing-text-tail">{{ middleEllipsisParts(fact.text).tail }}</span></span></li></ol>
         <template v-if="hasBriefingEvidence">
           <button class="evidence-toggle" :aria-expanded="evidenceOpen" @click="evidenceOpen = !evidenceOpen">{{ evidenceOpen ? '근거 기사 접기 ↑' : `근거 기사 ${briefingFacts.length}건 보기 ↓` }}</button>
           <div v-if="evidenceOpen" class="evidence-list"><a v-for="fact in briefingFacts" :key="fact.headline" :href="fact.url" target="_blank" rel="noopener noreferrer"><span>{{ fact.source }}</span><div><b>{{ fact.headline }}</b><small>{{ fact.time }} · 원문 기사</small></div><em>↗</em></a></div>

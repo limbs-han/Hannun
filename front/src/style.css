@@ -346,9 +346,12 @@ footer b{font-family:'Noto Serif KR'}
 .briefing-head h2{margin:6px 0 0;font:600 24px/1.35 'Noto Serif KR';letter-spacing:-.6px}
 .briefing-head>small{padding-bottom:3px;font-size:10px;color:#8a8b84}
 .briefing-sentences{display:grid;gap:13px;margin:0;padding:21px 0 20px;list-style:none;counter-reset:briefing}
-.briefing-sentences li{counter-increment:briefing;font:500 17px/1.75 'Noto Serif KR';letter-spacing:-.25px;color:#2b2c27}
-.briefing-sentences li:before{content:counter(briefing);display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-right:10px;border-radius:50%;background:#eff0e8;color:#59652b;font:700 10px 'Noto Sans KR';vertical-align:2px}
-.briefing-sentences li a{display:inline-flex;align-items:center;margin-left:8px;padding:4px 9px;border:1px solid #dfded7;border-radius:999px;background:#f5f4ef;color:#62655a;text-decoration:none;font:600 10px 'Noto Sans KR';vertical-align:2px;transition:border-color .18s,background .18s,color .18s}
+.briefing-sentences li{display:grid;grid-template-columns:22px minmax(0,1fr);align-items:center;gap:10px;counter-increment:briefing;font:500 17px/1.75 'Noto Serif KR';letter-spacing:-.25px;color:#2b2c27}
+.briefing-sentences li:before{content:counter(briefing);display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin:0;border-radius:50%;background:#eff0e8;color:#59652b;font:700 10px 'Noto Sans KR';vertical-align:2px}
+.briefing-sentences li>.briefing-text{display:flex;min-width:0;overflow:hidden;white-space:nowrap}
+.briefing-text-head{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.briefing-text-tail{flex:none;white-space:nowrap}
+.briefing-sentences li a{display:inline-flex;align-items:center;margin-left:0;padding:4px 9px;border:1px solid #dfded7;border-radius:999px;background:#f5f4ef;color:#62655a;text-decoration:none;font:600 10px 'Noto Sans KR';vertical-align:2px;transition:border-color .18s,background .18s,color .18s}
 .briefing-sentences li a:hover{border-color:#a8ae8d;background:#eef0e4;color:#4c5821}
 .evidence-toggle{display:block;width:100%;padding:12px;border:0;border-top:1px solid #e4e2dc;background:none;color:#59652b;font-size:11px;font-weight:700;text-align:center}
 .evidence-toggle:hover{background:#f7f6f1}
@@ -380,4 +383,103 @@ footer b{font-family:'Noto Serif KR'}
  .logo{grid-column:1;grid-row:2;margin-top:9px;font-size:31px}
  .logo small{font-size:11px}
  .searchbox{grid-column:1;grid-row:3;width:100%;margin-top:14px}
+}
+
+/* Clean news portal concept: paper gray + white */
+:root{
+ --paper:#e9e8e3;
+ --ink:#242620;
+ --muted:#74766f;
+ --line:#d2d3cd;
+ --olive:#59653b;
+ --olive-soft:#77815a;
+ --surface:#fff
+}
+body{
+ background-color:#e9e8e3;
+ background-image:linear-gradient(rgba(245,245,242,.2),rgba(245,245,242,.2)),url('./assets/paper-texture.png');
+ background-size:auto,760px auto;
+ background-attachment:fixed;
+ color:var(--ink)
+}
+html,body{overflow-x:hidden}
+.wrap{width:min(1180px,calc(100% - 48px))}
+header{background:rgba(255,255,255,.94);border-bottom:1px solid #dedfdd;backdrop-filter:blur(14px)}
+.head{height:106px;padding-top:9px}
+.head>time{top:5px;color:#777a7e}
+.logo{color:#202124;font-size:41px}
+.logo small{color:#777a7e;font-size:13px}
+.searchbox form{border:1px solid #dedfdd;border-radius:12px;background:#f5f5f4;box-shadow:none}
+.searchbox form:focus-within{border-color:#89936c;background:#fff;box-shadow:0 0 0 3px rgba(89,101,59,.11)}
+.recent{border:1px solid #d6d7d5;border-radius:12px;background:#fff;box-shadow:0 14px 36px rgba(32,33,36,.13)}
+.recent-words button{background:#eef0e8;color:#535d3b}
+.search-trends>button:hover{background:#f1f3ec;color:#4b5730}
+.search-trends em{color:#59653b}
+nav{height:56px;justify-content:center;gap:25px;border-top:1px solid #eeeeec;border-bottom:0}
+nav button{height:55px;border-radius:0;color:#676a6e;font-size:17px}
+nav button:hover{background:#f1f2ed;color:#4d5832}
+nav .active{background:transparent;color:#4b5730}
+nav .active:after{left:14px;right:14px;bottom:0;height:3px;border-radius:2px;background:#59653b}
+main.wrap{min-height:calc(100vh - 252px)}
+.layout{padding:34px 0 78px}
+.title{height:48px;margin-bottom:14px;border-bottom:1px solid #bfc0be}
+.title>div{gap:3px;padding:3px;border-radius:9px;background:#e3e3e1}
+.title button{padding:7px 15px;border-radius:7px;color:#727579;font-family:'Noto Sans KR';font-size:13px}
+.title button.active{background:#fff;color:#4b5730;box-shadow:0 1px 3px rgba(32,33,36,.08)}
+.title time{color:#85888c;font-size:11px}
+.feed{width:min(850px,100%)}
+.feed article{margin-bottom:12px;padding:25px 26px;border:1px solid #dedfdd;border-radius:14px;background:#fff;box-shadow:none;transition:border-color .18s,box-shadow .18s,background-color .18s}
+.feed article:hover,.feed article:focus-visible{border-color:#a9af98;background:#fff;box-shadow:0 8px 22px rgba(45,50,34,.08)}
+.feed-kicker span{padding:5px 9px;border:1px solid #d9ddcc;border-radius:6px;background:#eef0e8;color:#53602f;font-family:'Noto Sans KR';font-size:14px}
+.feed-kicker small{color:#85888c}
+.feed h3{color:#202124;font:600 24px/1.45 'Noto Serif KR';letter-spacing:-.7px}
+.feed-meta{color:#7c7f83;font-size:12px}
+.feed-briefing-preview{border:1px solid #cfd0cd;border-radius:14px;background:#fff;box-shadow:0 14px 36px rgba(32,33,36,.11)}
+.feed-briefing-preview::before{background:#fff;border-color:#cfd0cd}
+.feed-briefing-preview strong{color:#53602f}
+.feed-briefing-preview ol{border-color:#e4e4e2;color:#55585c}
+@media(min-width:1280px){.feed article:hover,.feed article:focus-visible{border-color:#a9af98;background:#fff;box-shadow:0 8px 22px rgba(45,50,34,.08)}}
+.more{border:1px solid #d6dacb;border-radius:10px;background:#eef0e8;color:#53602f}
+.more:hover{background:#e6e9dc}
+.detail{border:1px solid #d9dad8;border-radius:16px;background:#fff;box-shadow:none}
+.detail>span{border:1px solid #d9ddcc;border-radius:6px;background:#eef0e8;color:#53602f}
+.detail h1{color:#202124;font-family:'Noto Serif KR';font-weight:600}
+.detail p{color:#7d8084}
+.briefing{border:1px solid #d9dad8;border-radius:14px;background:#fff;box-shadow:none}
+.briefing-head,.briefing-sentences li a,.evidence-list,.evidence-list>a{border-color:#e2e3e1}
+.briefing-head label,.briefing-sentences li a,.evidence-toggle,.evidence-list>a>span{color:#53602f}
+.briefing-sentences li:before{background:#e9ece1;color:#53602f}
+.briefing-sentences li a{background:#f1f3ec}
+.group-header{border:1px solid #dadbd9;border-radius:14px;background:#fff;box-shadow:none}
+.stanceBtns{height:34px;border-color:#cfd0ce}
+.stanceBtns button{font-size:13px;font-weight:700}
+.stanceBtns button:nth-child(1){background:#e7f7ed;color:#168044}
+.stanceBtns button:nth-child(2){background:#edf0f3;color:#4e5968}
+.stanceBtns button:nth-child(3){background:#fff0f0;color:#d14545}
+.stanceBtns button:nth-child(1).active{color:#087a36;box-shadow:inset 0 0 0 2px #28a862}
+.stanceBtns button:nth-child(2).active{color:#333d4b;box-shadow:inset 0 0 0 2px #6b7684}
+.stanceBtns button:nth-child(3).active{color:#c23333;box-shadow:inset 0 0 0 2px #e05252}
+.detail .detail-stance{height:38px}
+.detail-stance button{font-size:14px}
+.detail-stance button:nth-child(1){background:#e7f7ed;color:#168044}
+.detail-stance button:nth-child(2){background:#edf0f3;color:#4e5968}
+.detail-stance button:nth-child(3){background:#fff0f0;color:#d14545}
+.opinion-card,.lead-story{border-color:#dadbd9;border-radius:14px;background:#fff;box-shadow:none}
+.latest-news img{filter:none;border-radius:10px}
+.source,.opinion-head span{color:#59652b}
+.coverage-more{border-color:#cfd5bb;border-radius:9px;background:#e9ecdf;color:#4f5d2c}
+.results .list{border-color:#aeb0ad}
+.results article{border-color:#d7d8d6}
+.results article:hover{background:rgba(255,255,255,.55)}
+.empty{border:1px solid #d9dad8;border-radius:14px;background:#fff}
+footer{border-top:1px solid #d8d9d7;background:rgba(255,255,255,.82)}
+
+@media(max-width:680px){
+ .head{height:auto;padding:10px 0 14px}
+ nav{height:50px;justify-content:flex-start;gap:8px}
+ nav button{height:49px;min-width:auto;padding:0 11px;font-size:15px}
+ .layout{padding-top:24px}
+ .feed article{padding:21px 18px;border-radius:12px}
+ .feed h3{font-size:21px}
+ .detail,.briefing,.group-header,.opinion-card{border-radius:12px}
 }
