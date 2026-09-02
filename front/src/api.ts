@@ -8,6 +8,15 @@ export interface IssueListItem {
   articleCount: number
   score?: number
   factSummary: string
+  commonFactsBriefing: string[]
+}
+
+export interface SearchIssueItem {
+  issueId: number
+  category: string
+  pressCount: number
+  articleCount: number
+  factSummary: string
 }
 
 export interface CursorIssueResponse {
@@ -70,9 +79,13 @@ export interface SearchSuggestionsResponse {
   popularKeywords: string[]
 }
 
-export interface SearchResponse extends CursorIssueResponse {
+export interface SearchResponse {
   resultType: 'LIST' | string
   keyword: string
+  items: SearchIssueItem[]
+  nextCursorValue: number | null
+  nextCursorId: number | null
+  hasNext: boolean
 }
 
 export type LogEventType =

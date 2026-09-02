@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { api, type ApiStance, type ArticleItem, type FeedSort, type IssueDetailResponse, type IssueListItem } from './api'
+import { api, type ApiStance, type ArticleItem, type FeedSort, type IssueDetailResponse, type IssueListItem, type SearchIssueItem } from './api'
 import summitNewsImage from './assets/summit-news.png'
 
-type Issue = { id: number; category: string; title: string; press: number; articles: number; summary: string; time: string; score?: number }
+type Issue = { id: number; category: string; title: string; press: number; articles: number; summary: string; time: string; score?: number; briefing?: string[] }
 type Stance = '긍정' | '중립' | '부정'
 type ViewArticle = { id?: number; source: string; headline: string; byline: string; time: string; link?: string; thumbnail?: string | null }
 type ViewGroup = { press: number; articles: number; summary: string; lead: ViewArticle; related: ViewArticle[] }
@@ -93,8 +93,8 @@ const hasNextViewpointPage = computed(() => {
 })
 const currentStanceArticleCount = computed(() => viewpointCards.value.reduce((sum, card) => sum + card.articleCount, 0))
 
-function mapIssue(item: IssueListItem): Issue {
-  return { id: item.issueId, category: item.category, title: item.factSummary, press: item.pressCount, articles: item.articleCount, summary: item.factSummary, time: '최근 보도', score: item.score }
+function mapIssue(item: IssueListItem | SearchIssueItem): Issue {
+  return { id: item.issueId, category: item.category, title: item.factSummary, press: item.pressCount, articles: item.articleCount, summary: item.factSummary, time: '최근 보도', score: 'score' in item ? item.score : undefined, briefing: 'commonFactsBriefing' in item ? item.commonFactsBriefing : undefined }
 }
 
 function mapArticle(article: ArticleItem): ViewArticle {
@@ -205,7 +205,7 @@ function stancePercent(value: Stance) {
 }
 
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
-function briefingPreview(issue: Issue) { return [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`] }
+function briefingPreview(issue: Issue) { return issue.briefing?.length ? issue.briefing : [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`] }
 
 async function loadGroupArticles(groupId: number) {
   const cursor = groupCursor.value[groupId]
