@@ -19,7 +19,8 @@ public record IssueFeedResponse(
             Integer pressCount,
             Integer articleCount,
             Long score,
-            String factSummary
+            String factSummary,
+            List<String> commonFactsBriefing
     ) {
     }
 }
