@@ -153,7 +153,8 @@ services:
     image: grafana/grafana:latest
     container_name: news-grafana
     restart: unless-stopped
-    mem_limit: 512m
+    # 512m였을 때 패널 25개 + refresh=10s 조합으로 반복 OOM-kill 발생(anon-rss 440MB + file-rss 197MB로 512m 초과).
+    mem_limit: 1024m
     ports:
       - "3000:3000"
     environment:
@@ -225,6 +226,10 @@ services:
     restart: unless-stopped
     mem_limit: 128m
     privileged: true
+    # docker_only=true 없으면 호스트의 모든 cgroup(systemd 서비스, Jenkins 등)까지 다 감시해서
+    # 정작 우리가 보는 건 docker 컨테이너뿐인데 불필요하게 메모리를 먹음(128m 한도의 77%까지 찼었음).
+    command:
+      - "--docker_only=true"
     ports:
       - "8085:8080"
     volumes:
