@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 // fact_summary에 FULLTEXT 인덱스(idx_issue_fact_summary_ft, ngram 파서)가 DB에 수동으로 걸려있음 —
 // JPA @Index는 FULLTEXT/파서를 표현 못 해서 ddl-auto가 못 만들어줌. 마이그레이션 도구 도입 전까지는 수동 관리.
@@ -26,6 +27,14 @@ public class Issue {
 
     @Column(columnDefinition = "TEXT")
     private String factSummary;
+
+    // 스탠스와 무관하게 다들 동의하는 사실 나열(상세/피드 응답 공용). 별도 테이블(issue_common_facts_briefing)로
+    // 분리 - 문장 개수가 적어서 N+1 영향은 크지 않다고 보고 단순한 쪽 선택. @OrderColumn으로 순서 보장.
+    @ElementCollection
+    @CollectionTable(name = "issue_common_facts_briefing", joinColumns = @JoinColumn(name = "issue_id"))
+    @OrderColumn(name = "sort_order")
+    @Column(name = "fact", columnDefinition = "TEXT")
+    private List<String> commonFactsBriefing;
 
     @Column(nullable = false)
     private Integer pressCount = 0;
@@ -50,11 +59,13 @@ public class Issue {
     @Column(nullable = false)
     private OffsetDateTime createdAt;
 
-    public Issue(Long clusterId, String category, String factSummary, int pressCount, int articleCount,
+    public Issue(Long clusterId, String category, String factSummary, List<String> commonFactsBriefing,
+                 int pressCount, int articleCount,
                  OffsetDateTime firstReportedAt, OffsetDateTime lastReportedAt, OffsetDateTime clusteredAt) {
         this.clusterId = clusterId;
         this.category = category;
         this.factSummary = factSummary;
+        this.commonFactsBriefing = commonFactsBriefing;
         this.pressCount = pressCount;
         this.articleCount = articleCount;
         this.firstReportedAt = firstReportedAt;
@@ -67,11 +78,13 @@ public class Issue {
         return incomingClusteredAt.isBefore(this.clusteredAt);
     }
 
-    public void updateAggregates(String category, String factSummary, int pressCount, int articleCount,
+    public void updateAggregates(String category, String factSummary, List<String> commonFactsBriefing,
+                                  int pressCount, int articleCount,
                                   OffsetDateTime firstReportedAt, OffsetDateTime lastReportedAt,
                                   OffsetDateTime clusteredAt) {
         this.category = category;
         this.factSummary = factSummary;
+        this.commonFactsBriefing = commonFactsBriefing;
         this.pressCount = pressCount;
         this.articleCount = articleCount;
         this.firstReportedAt = firstReportedAt;

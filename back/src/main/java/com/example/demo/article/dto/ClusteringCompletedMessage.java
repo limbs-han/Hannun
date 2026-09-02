@@ -9,6 +9,7 @@ public record ClusteringCompletedMessage(
         Long clusterId,
         String category,
         String factSummary,
+        List<String> commonFactsBriefing,
         OffsetDateTime clusteredAt,
         List<ArticleAssignment> articles
 ) {

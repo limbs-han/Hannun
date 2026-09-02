@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -44,7 +45,8 @@ public class IssueCommandService {
             @CacheEvict(cacheNames = IssueQueryService.ISSUE_DETAIL_CACHE, key = "#clusterId + ':neutral:0'"),
             @CacheEvict(cacheNames = IssueQueryService.ISSUE_DETAIL_CACHE, key = "#clusterId + ':negative:0'")
     })
-    public void applyClusteringResult(Long clusterId, String category, String factSummary, OffsetDateTime clusteredAt) {
+    public void applyClusteringResult(Long clusterId, String category, String factSummary,
+                                       List<String> commonFactsBriefing, OffsetDateTime clusteredAt) {
         ArticleClusterAggregate aggregate = articleQueryService.aggregateByClusterId(clusterId);
         if (aggregate.articleCount() == null || aggregate.articleCount() == 0) {
             throw new IllegalStateException(
@@ -60,12 +62,12 @@ public class IssueCommandService {
                 log.info("오래된 클러스터링 결과라 무시: clusterId={}, clusteredAt={}", clusterId, clusteredAt);
                 return;
             }
-            existing.get().updateAggregates(category, factSummary, pressCount, articleCount,
+            existing.get().updateAggregates(category, factSummary, commonFactsBriefing, pressCount, articleCount,
                     aggregate.firstReportedAt(), aggregate.lastReportedAt(), clusteredAt);
             return;
         }
 
-        issueRepository.save(new Issue(clusterId, category, factSummary,
+        issueRepository.save(new Issue(clusterId, category, factSummary, commonFactsBriefing,
                 pressCount, articleCount, aggregate.firstReportedAt(), aggregate.lastReportedAt(), clusteredAt));
     }
 
