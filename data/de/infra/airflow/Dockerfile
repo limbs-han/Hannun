@@ -14,3 +14,7 @@ USER airflow
 # 크롤러 의존성(requirements.txt) + Spark. 빌드 컨텍스트는 data/de
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt pyspark==3.5.4
+
+# 크롤러 상태(seen.sqlite) 자리. 이미지에 airflow 소유로 만들어 둬야
+# 이름 있는 볼륨이 첫 마운트에서 소유권을 이어받아 쓰기가 된다
+RUN mkdir /opt/airflow/state

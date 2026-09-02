@@ -81,6 +81,19 @@ def build_message(row):
     }
 
 
+def _preflight(broker):
+    """송신 시작 전에 브로커 접속을 확인한다. 미설정 시 조용히 localhost 로
+    가서 15,000건이 헛도는 사고(2026-09-01 실측)를 막는다."""
+    from confluent_kafka.admin import AdminClient
+    try:
+        AdminClient({"bootstrap.servers": broker}).list_topics(timeout=10)
+    except Exception as error:
+        raise SystemExit(
+            f"Kafka 브로커({broker})에 연결할 수 없습니다. "
+            "운영 송신이라면 KAFKA_BROKER 환경변수를 설정하세요."
+        ) from error
+
+
 class Checkpoint:
     """파일별 진행 행 번호와 송신한 링크를 기록한다."""
 
@@ -98,11 +111,19 @@ class Checkpoint:
         if link:
             self._conn.execute("INSERT OR IGNORE INTO sent_links VALUES (?)", (link,))
 
+    def total_sent(self):
+        """지금까지 전달 확인까지 끝난 누적 송신 수."""
+        return self._conn.execute("SELECT COUNT(*) FROM sent_links").fetchone()[0]
+
     def already_sent(self, link):
         return self._conn.execute("SELECT 1 FROM sent_links WHERE link=?", (link,)).fetchone() is not None
 
     def commit(self):
         self._conn.commit()
+
+    def close(self):
+        # 커밋 안 된 mark 는 롤백된다 — 전달 미확인 구간을 기록에 남기지 않기 위함
+        self._conn.close()
 
 
 def iter_rows(name):
@@ -120,56 +141,79 @@ def run(send, limit=None, checkpoint_path="dataset_sender_checkpoint.sqlite", pr
         verbose=False):
     stats = {"sent": 0, "dedup": 0, "invalid": 0}
     ckpt = Checkpoint(checkpoint_path)
+    base_sent = ckpt.total_sent()  # 표시 번호를 이전 실행에서 이어가기 위한 누적
+    if base_sent:
+        logger.info("이전까지 %s건 송신 완료 상태에서 이어서 시작", f"{base_sent:,}")
     if send and producer is None:
+        _preflight(BROKER)
         from confluent_kafka import Producer
         producer = Producer({"bootstrap.servers": BROKER, "acks": "all"})
 
+    delivery_errors = []
+
+    def _on_delivery(error, _msg):
+        if error is not None:
+            delivery_errors.append(str(error))
+
+    def _sync():
+        """전달 확인 후에만 체크포인트를 커밋한다. 실패 시 기록하지 않아
+        재실행에서 그 구간을 다시 보낸다 (at-least-once)."""
+        if send:
+            remaining = producer.flush(60)
+            if remaining or delivery_errors:
+                raise RuntimeError(
+                    f"전송 미확인 {remaining}건, 실패 {len(delivery_errors)}건 "
+                    f"(첫 오류: {delivery_errors[0] if delivery_errors else '없음'}) — "
+                    "체크포인트를 기록하지 않았습니다. 원인 해결 후 재실행하면 이어서 보냅니다."
+                )
+        ckpt.commit()
+
     interval = 1.0 / RATE_PER_SEC
     next_slot = time.monotonic()
-    for name in FILES:
-        start_row = ckpt.done_rows(name)
-        for row_no, row in iter_rows(name):
-            if row_no <= start_row:
-                continue
-            if limit is not None and stats["sent"] >= limit:
-                ckpt.commit()
-                return stats
-            message = build_message(row)
-            if message is None:
-                stats["invalid"] += 1
-                ckpt.mark(name, row_no, None)
-                continue
-            if ckpt.already_sent(message["link"]):
-                stats["dedup"] += 1
-                ckpt.mark(name, row_no, None)
-                continue
-            if send:
-                now = time.monotonic()
-                if now < next_slot:
-                    time.sleep(next_slot - now)
-                next_slot = max(next_slot + interval, now)
-                publisher = PUBLISHER_ID.get(message["company"], message["company"])
-                producer.produce(TOPIC, key=article_id(publisher, message["link"]),
-                                 value=json.dumps(message, ensure_ascii=False))
-                producer.poll(0)
-            stats["sent"] += 1
-            ckpt.mark(name, row_no, message["link"])
-            if verbose:
-                print(f"[{stats['sent']:,}] {message['company']} | {message['title'][:50]}", flush=True)
-            elif stats["sent"] % 1000 == 0:
-                logger.info("%s %s건 송신, 마지막: %s | %s",
-                            name, f"{stats['sent']:,}", message["company"], message["title"][:40])
-            if stats["sent"] % 5000 == 0:
-                ckpt.commit()
+    try:
+        for name in FILES:
+            start_row = ckpt.done_rows(name)
+            for row_no, row in iter_rows(name):
+                if row_no <= start_row:
+                    continue
+                if limit is not None and stats["sent"] >= limit:
+                    _sync()
+                    return stats
+                message = build_message(row)
+                if message is None:
+                    stats["invalid"] += 1
+                    ckpt.mark(name, row_no, None)
+                    continue
+                if ckpt.already_sent(message["link"]):
+                    stats["dedup"] += 1
+                    ckpt.mark(name, row_no, None)
+                    continue
                 if send:
-                    producer.flush(30)
-                logger.info("%s: %s행, 누적 %s", name, f"{row_no:,}", stats)
-        ckpt.commit()
-        logger.info("%s 완료: %s", name, stats)
-    if send:
-        producer.flush(60)
-    ckpt.commit()
-    return stats
+                    now = time.monotonic()
+                    if now < next_slot:
+                        time.sleep(next_slot - now)
+                    next_slot = max(next_slot + interval, now)
+                    publisher = PUBLISHER_ID.get(message["company"], message["company"])
+                    producer.produce(TOPIC, key=article_id(publisher, message["link"]),
+                                     value=json.dumps(message, ensure_ascii=False),
+                                     on_delivery=_on_delivery)
+                    producer.poll(0)
+                stats["sent"] += 1
+                ckpt.mark(name, row_no, message["link"])
+                if verbose:
+                    print(f"[{base_sent + stats['sent']:,}] {message['company']} | {message['title'][:50]}", flush=True)
+                elif stats["sent"] % 1000 == 0:
+                    logger.info("%s 누적 %s건 송신, 마지막: %s | %s",
+                                name, f"{base_sent + stats['sent']:,}", message["company"], message["title"][:40])
+                if stats["sent"] % 5000 == 0:
+                    _sync()
+                    logger.info("%s: %s행, 누적 %s", name, f"{row_no:,}", stats)
+            _sync()
+            logger.info("%s 완료: %s", name, stats)
+            _sync()
+            return stats
+    finally:
+        ckpt.close()
 
 
 if __name__ == "__main__":
