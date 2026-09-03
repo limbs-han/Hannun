@@ -125,8 +125,8 @@
     },
     {
       "id": 6,
-      "title": "읽기 API 응답시간 (평균 vs p99, /api/issues|search)",
-      "description": "평균만 보면 캐시 히트 다수에 가려서 꼬리 지연(느린 요청 1%)이 안 보임 - p99를 같이 봐야 캐시 미스/DB 폴백 구간에서 실제로 얼마나 느려지는지 잡힘.",
+      "title": "읽기 API 응답시간 (평균/p50/p95/p99, /api/issues|search)",
+      "description": "평균만 보면 캐시 히트 다수에 가려서 꼬리 지연이 안 보임 - p50(중앙값)/p95/p99을 같이 봐야 저하가 얼마나 넓게 퍼졌는지(소수 이상치 vs 전반적 저하) 구분됨.",
       "type": "graph",
       "datasource": "Prometheus",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
@@ -141,12 +141,26 @@
           "refId": "A"
         },
         {
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{uri=~\"/api/(issues|search).*\"}[5m])) by (le, uri))",
+          "legendFormat": "p50 - {{uri}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri=~\"/api/(issues|search).*\"}[5m])) by (le, uri))",
+          "legendFormat": "p95 - {{uri}}",
+          "refId": "C"
+        },
+        {
           "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{uri=~\"/api/(issues|search).*\"}[5m])) by (le, uri))",
           "legendFormat": "p99 - {{uri}}",
-          "refId": "B"
+          "refId": "D"
         }
       ],
-      "seriesOverrides": [{ "alias": "/^p99/", "linewidth": 1, "dashes": true }],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
       "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     },
@@ -429,8 +443,8 @@
     },
     {
       "id": 21,
-      "title": "메시지 처리 시간 (컨슈머별 전체)",
-      "description": "@Timed로 측정한 컨슈머 메시지/배치 1건 전체 처리 시간(JSON 파싱 + DB 저장 등 다 포함). article-ingest는 배치 단위, clustering-completed는 메시지 단위.",
+      "title": "메시지 처리 시간 (평균/p50/p95/p99, 컨슈머별)",
+      "description": "@Timed로 측정한 컨슈머 메시지/배치 1건 전체 처리 시간(JSON 파싱 + DB 저장 등 다 포함). article-ingest는 배치 단위, clustering-completed는 메시지 단위. p50/p95/p99으로 저하 범위 구분.",
       "type": "graph",
       "datasource": "Prometheus",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 89 },
@@ -445,18 +459,32 @@
           "refId": "A"
         },
         {
+          "expr": "histogram_quantile(0.50, sum(rate(message_processing_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p50 - {{consumer}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(message_processing_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p95 - {{consumer}}",
+          "refId": "C"
+        },
+        {
           "expr": "histogram_quantile(0.99, sum(rate(message_processing_duration_seconds_bucket[5m])) by (le, consumer))",
           "legendFormat": "p99 - {{consumer}}",
-          "refId": "B"
+          "refId": "D"
         }
       ],
-      "seriesOverrides": [{ "alias": "/^p99/", "linewidth": 1, "dashes": true }],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
       "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     },
     {
       "id": 22,
-      "title": "DB 벌크 upsert 처리 시간 (평균 vs p99)",
+      "title": "DB 벌크 upsert 처리 시간 (평균/p50/p95/p99)",
       "description": "@Timed로 측정한 ArticleCommandService.saveAll()만의 순수 DB 왕복 시간 - 21번 패널(전체)에서 이 값을 빼면 JSON 파싱 등 나머지 구간 시간이 나옴. HikariCP usage 지표랑 교차검증용.",
       "type": "graph",
       "datasource": "Prometheus",
@@ -472,12 +500,26 @@
           "refId": "A"
         },
         {
+          "expr": "histogram_quantile(0.50, sum(rate(db_write_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "p50 - {{operation}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(db_write_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "p95 - {{operation}}",
+          "refId": "C"
+        },
+        {
           "expr": "histogram_quantile(0.99, sum(rate(db_write_duration_seconds_bucket[5m])) by (le, operation))",
           "legendFormat": "p99 - {{operation}}",
-          "refId": "B"
+          "refId": "D"
         }
       ],
-      "seriesOverrides": [{ "alias": "/^p99/", "linewidth": 1, "dashes": true }],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
       "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     },
@@ -553,6 +595,53 @@
         }
       ],
       "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 26,
+      "title": "InnoDB 버퍼풀 캐시 미스율",
+      "description": "buffer_pool_reads(캐시 미스 -> 디스크에서 페이지 읽음) / buffer_pool_read_requests(논리 읽기 요청 총량). Redis 히트율 패널과 같은 개념 - 낮을수록 좋음. 올라가기 시작하면 인덱스(특히 link 유니크 인덱스)가 버퍼풀에 못 들어가고 있다는 신호.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 113 },
+      "lines": true,
+      "fill": 2,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(mysql_global_status_innodb_buffer_pool_reads[5m]) / rate(mysql_global_status_innodb_buffer_pool_read_requests[5m])",
+          "legendFormat": "cache miss ratio",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 27,
+      "title": "MySQL 실제 물리 디스크 I/O (읽기/쓰기 건수)",
+      "description": "innodb_data_reads/writes - InnoDB가 실제로 디스크에 읽고 쓴 횟수(초당). 캐시 미스율 패널과 같이 봐서, 미스율이 오를 때 실제 디스크 I/O도 같이 느는지 교차 확인용.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 113 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(mysql_global_status_innodb_data_reads[5m])",
+          "legendFormat": "reads/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(mysql_global_status_innodb_data_writes[5m])",
+          "legendFormat": "writes/s",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
     }
   ]
