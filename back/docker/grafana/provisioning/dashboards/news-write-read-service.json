@@ -664,6 +664,47 @@
       ],
       "yaxes": [{ "format": "percent", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 29,
+      "title": "Kafka 커밋(acknowledge) 왕복 시간 (평균/p50/p95/p99, 컨슈머별)",
+      "description": "message.processing.duration(전체) - db.write.duration(DB만) 사이에 설명 안 되던 구간(2026-09-04 12:01, p99만 47ms 차이) 확인용. consumer 태그로 그룹화 - clustering-completed 등 다른 컨슈머에도 같은 타이머 추가하면 이 패널에 자동으로 같이 잡힘(대시보드 수정 불필요).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 129 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_ack_duration_seconds_sum[5m])) by (consumer) / sum(rate(kafka_ack_duration_seconds_count[5m])) by (consumer)",
+          "legendFormat": "avg - {{consumer}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p50 - {{consumer}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p95 - {{consumer}}",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p99 - {{consumer}}",
+          "refId": "D"
+        }
+      ],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
     }
   ]
 }
