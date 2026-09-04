@@ -643,6 +643,68 @@
       ],
       "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 28,
+      "title": "컨테이너별 CPU 사용률 (전체, 코어 기준)",
+      "description": "cAdvisor 기준 컨테이너별 CPU 사용량 - 호스트 코어 수(4코어=400%)만큼 쓸 수 있음. 메모리 패널은 있는데 CPU 패널이 빠져있었음(부하테스트 때 DB CPU를 사후 수동 조회로만 확인했던 문제) - 특히 MySQL/Kafka 브로커가 부하 증가 시 코어를 얼마나 쓰는지 상시 확인용.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 121 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"news-.+\"}[1m])) by (name) * 100",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percent", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 29,
+      "title": "Kafka 커밋(acknowledge) 왕복 시간 (평균/p50/p95/p99, 컨슈머별)",
+      "description": "message.processing.duration(전체) - db.write.duration(DB만) 사이에 설명 안 되던 구간(2026-09-04 12:01, p99만 47ms 차이) 확인용. consumer 태그로 그룹화 - clustering-completed 등 다른 컨슈머에도 같은 타이머 추가하면 이 패널에 자동으로 같이 잡힘(대시보드 수정 불필요).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 129 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_ack_duration_seconds_sum[5m])) by (consumer) / sum(rate(kafka_ack_duration_seconds_count[5m])) by (consumer)",
+          "legendFormat": "avg - {{consumer}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p50 - {{consumer}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p95 - {{consumer}}",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p99 - {{consumer}}",
+          "refId": "D"
+        }
+      ],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
     }
   ]
 }

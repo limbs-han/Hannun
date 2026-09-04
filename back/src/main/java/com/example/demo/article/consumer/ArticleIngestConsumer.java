@@ -4,6 +4,8 @@ import com.example.demo.article.dto.ArticleCreateRequest;
 import com.example.demo.article.dto.ArticleIngestMessage;
 import com.example.demo.article.service.ArticleCommandService;
 import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -22,6 +24,7 @@ public class ArticleIngestConsumer {
 
     private final ArticleCommandService articleCommandService;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     @Timed(value = "message.processing.duration", extraTags = {"consumer", "article-ingest"},
             description = "배치 1건(JSON 파싱 + DB 저장) 전체 처리 시간")
@@ -46,7 +49,17 @@ public class ArticleIngestConsumer {
 
         articleCommandService.saveAll(requests);
 
+        // saveAll()은 db.write.duration으로 이미 따로 잼. 근데 message.processing.duration(전체) -
+        // db.write.duration(DB만) 뺐을 때 안 맞는 차이가 생겼었음(2026-09-04 12:01, p99만 47ms 차이) -
+        // 카프카 오프셋 커밋(브로커 왕복)이 원인일 걸로 추정만 하고 개별 호출 단위로는 확인 못 했던 구간.
+        // 여기 직접 타이머를 심어서 다음엔 평균이 아니라 percentile로 바로 확인 가능하게 함.
+        Timer.Sample ackSample = Timer.start(meterRegistry);
         acknowledgment.acknowledge();
+        ackSample.stop(Timer.builder("kafka.ack.duration")
+                .tag("consumer", "article-ingest")
+                .description("Kafka acknowledgment.acknowledge() 왕복 시간(오프셋 커밋)")
+                .publishPercentileHistogram()
+                .register(meterRegistry));
     }
 
     private ArticleCreateRequest toRequest(String payload) {
