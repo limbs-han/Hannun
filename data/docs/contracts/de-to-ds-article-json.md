@@ -27,6 +27,16 @@ published_at)은 더 이상 쓰지 않는다.
 | thumbnail_url | string | O | 대표 이미지 URL. 데이터셋 반입분은 null |
 | crawled_at | string | X | 수집 시각. UTC RFC 3339, `Z` 종결. 파티션·신선도 기준 |
 
+## 읽는 위치 (2026-09-07, S15P21E105-68)
+
+- HDFS `/lake/silver/news/dt=YYYY-MM-DD/` parquet. 위 15필드에 파티션 컬럼 `dt`(published 의
+  한국 날짜)가 따라온다. 데이터셋·빅카인즈·실시간 세 소스가 합쳐져 있고 article_id 중복은
+  제거돼 있다. 실시간분은 15분마다 오늘·어제 dt 가 갱신된다
+- silver·bronze 는 **읽기 전용**이다. DS 산출물은 별도 경로에 쓴다
+- HDFS 접속 시 `HADOOP_USER_NAME=root` 를 선언하지 않는다. root 는 적재 잡 전용이며 DS 가
+  같은 이름으로 쓰면 실수로 레이크를 덮어쓸 수 있다
+- 실시간분의 `crawled_at` 은 적재일 자정으로 근사한 값이다. 초 단위 수집 시각이 필요하면 DE 에 요청
+
 ## 알아둘 것
 
 - `published` 는 UTC 다. KST 로 보려면 +9h. 패턴이 `Z` 종결을 강제하므로
