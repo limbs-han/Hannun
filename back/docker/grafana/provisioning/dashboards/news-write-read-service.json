@@ -705,6 +705,41 @@
       ],
       "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 30,
+      "title": "Redis 커넥션 수",
+      "description": "connected clients=현재 붙어있는 커넥션 수(Lettuce 풀 + exporter 자체 연결 포함), maxclients=redis.conf 상한(기본 10000). rejected/sec>0이면 maxclients 초과로 신규 연결이 거부되고 있다는 뜻 - 풀 사이즈나 maxclients 재검토 필요.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 137 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "redis_connected_clients",
+          "legendFormat": "connected clients",
+          "refId": "A"
+        },
+        {
+          "expr": "redis_blocked_clients",
+          "legendFormat": "blocked clients",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(redis_rejected_connections_total[5m])",
+          "legendFormat": "rejected connections/sec",
+          "refId": "C"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "rejected connections/sec", "yaxis": 2 }],
+      "yaxes": [
+        { "format": "short", "min": "0", "show": true },
+        { "format": "short", "min": "0", "show": true }
+      ],
+      "xaxis": { "mode": "time", "show": true }
     }
   ]
 }
