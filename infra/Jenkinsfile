@@ -1,10 +1,13 @@
 // develop 브랜치에 머지될 때마다 실행. 모노레포(back/data/front)라서 실제로 바뀐 폴더의 스테이지만 동작함.
+// 단, changeset이 비어있어도(예: 실패한 배포를 새 커밋 없이 "Build Now"로 수동 재시도) 사람이 직접
+// 트리거한 빌드는 스킵하지 않고 강제로 돎 - 그래야 배포 실패 후 재시도할 때마다 트리거용 빈 커밋을
+// 안 만들어도 됨. 웹훅(GitLab push)으로 자동 트리거된 빌드는 기존처럼 changeset 기준 그대로 적용.
 pipeline {
     agent any
 
     stages {
         stage('Deploy Backend') {
-            when { changeset "back/**" }
+            when { anyOf { changeset "back/**"; triggeredBy 'UserIdCause' } }
             steps {
                 sh 'chmod +x back/deploy/deploy.sh'
                 sh 'cd back/deploy && ./deploy.sh'
@@ -12,7 +15,7 @@ pipeline {
         }
 
         stage('Deploy Data') {
-            when { changeset "data/**" }
+            when { anyOf { changeset "data/**"; triggeredBy 'UserIdCause' } }
             steps {
                 // TODO: 데이터팀 배포 스크립트로 교체 필요 (담당: 데이터팀)
                 echo 'data/ 변경 감지됨 - 배포 스크립트 아직 없음'
@@ -20,7 +23,7 @@ pipeline {
         }
 
         stage('Deploy Frontend') {
-            when { changeset "front/**" }
+            when { anyOf { changeset "front/**"; triggeredBy 'UserIdCause' } }
             steps {
                 // TODO: 프론트팀 배포 스크립트로 교체 필요 (담당: 프론트팀)
                 echo 'front/ 변경 감지됨 - 배포 스크립트 아직 없음'
