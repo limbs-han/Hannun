@@ -78,6 +78,12 @@ def dedup(df):
     return df.withColumn("_rn", row_number().over(order)).where(col("_rn") == 1).drop("_rn")
 
 
+def write(df):
+    # 중복 제거 셔플은 article_id 기준 200조각이라 그대로 쓰면 조각마다 날짜별 파일이 생겨
+    # dt 당 파일 195개가 됐다 (2026-09-07 실측 54만 파일). dt 로 재분배해 dt 당 1개로 쓴다
+    df.repartition("dt").write.mode("overwrite").partitionBy("dt").parquet(SILVER)
+
+
 def run_full(spark):
     crawled_at = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     dropped = {name: spark.sparkContext.accumulator(0) for name in ("dataset", "news", "bigkinds")}
@@ -86,7 +92,7 @@ def run_full(spark):
         .union(read_news(spark, dropped["news"]))
         .union(read_bigkinds(spark, dropped["bigkinds"]))
     )
-    dedup(to_df(spark, rdd)).write.mode("overwrite").partitionBy("dt").parquet(SILVER)
+    write(dedup(to_df(spark, rdd)))
     logger.info("제외 건수: %s", {k: v.value for k, v in dropped.items()})
 
 
@@ -104,7 +110,7 @@ def run_incremental(spark, ingest_dates):
     except AnalysisException:  # silver 가 아직 없음 (full 이전)
         existing = spark.createDataFrame([], SCHEMA)
     spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
-    dedup(new.union(existing)).write.mode("overwrite").partitionBy("dt").parquet(SILVER)
+    write(dedup(new.union(existing)))
     logger.info("dt %s 갱신, 실시간 제외 %d건", sorted(dts), dropped.value)
 
 
