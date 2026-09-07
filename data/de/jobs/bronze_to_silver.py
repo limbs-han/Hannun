@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 
+from pyspark import AccumulatorParam
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import col, length, row_number
 from pyspark.sql.types import StringType, StructField, StructType
@@ -25,7 +26,7 @@ from pyspark.sql.utils import AnalysisException
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # crawler·backfill·jobs 의 부모
 sys.path.insert(0, ROOT)
 from jobs.silver_transform import (  # noqa: E402
-    FIELDS, NULLABLE, from_bigkinds_line, from_dataset_row, from_realtime_message,
+    FIELDS, NULLABLE, UnknownPublisher, from_bigkinds_line, from_dataset_row, from_realtime_message,
 )
 
 logger = logging.getLogger("bronze_to_silver")
@@ -35,36 +36,52 @@ SILVER = f"{LAKE}/silver/news"
 SCHEMA = StructType([StructField(f, StringType(), f in NULLABLE) for f in FIELDS])
 
 
-def _counting(fn, dropped):
-    """변환 결과가 None 이면 누산기에 더한다 — 제외 건수를 잡 로그로 남기기 위함."""
+class _CountByKey(AccumulatorParam):
+    """{언론사: 건수} 누산기."""
+
+    def zero(self, value):
+        return {}
+
+    def addInPlace(self, a, b):
+        for key, n in b.items():
+            a[key] = a.get(key, 0) + n
+        return a
+
+
+def _counting(fn, dropped, unknown):
+    """제외된 행을 센다. None 은 dropped 에, 미등록 언론사는 unknown 에 이름별로."""
     def wrapped(*args):
-        record = fn(*args)
+        try:
+            record = fn(*args)
+        except UnknownPublisher as error:
+            unknown.add({error.args[0]: 1})
+            return None
         if record is None:
             dropped.add(1)
         return record
     return wrapped
 
 
-def read_dataset(spark, crawled_at, dropped):
+def read_dataset(spark, crawled_at, dropped, unknown):
     df = (
         spark.read.option("sep", "|").option("header", True).option("multiLine", True)
         .option("quote", '"').option("escape", '"')
         .csv(f"{LAKE}/bronze/news_dataset/*.csv")
     )
-    tx = _counting(from_dataset_row, dropped)
+    tx = _counting(from_dataset_row, dropped, unknown)
     return df.rdd.map(lambda r: tx(list(r), crawled_at))
 
 
-def read_news(spark, dropped, ingest_dates=None):
+def read_news(spark, dropped, unknown, ingest_dates=None):
     df = spark.read.text(f"{LAKE}/bronze/news")  # ingest_date= 파티션 컬럼이 따라온다
     if ingest_dates:
         df = df.where(col("ingest_date").isin(ingest_dates))
-    tx = _counting(from_realtime_message, dropped)
+    tx = _counting(from_realtime_message, dropped, unknown)
     return df.rdd.map(lambda r: tx(r["value"], str(r["ingest_date"])))
 
 
-def read_bigkinds(spark, dropped):
-    tx = _counting(from_bigkinds_line, dropped)
+def read_bigkinds(spark, dropped, unknown):
+    tx = _counting(from_bigkinds_line, dropped, unknown)
     return spark.read.text(f"{LAKE}/bronze/bigkinds/*.jsonl").rdd.map(lambda r: tx(r["value"]))
 
 
@@ -87,18 +104,21 @@ def write(df):
 def run_full(spark):
     crawled_at = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     dropped = {name: spark.sparkContext.accumulator(0) for name in ("dataset", "news", "bigkinds")}
+    unknown = spark.sparkContext.accumulator({}, _CountByKey())
     rdd = (
-        read_dataset(spark, crawled_at, dropped["dataset"])
-        .union(read_news(spark, dropped["news"]))
-        .union(read_bigkinds(spark, dropped["bigkinds"]))
+        read_dataset(spark, crawled_at, dropped["dataset"], unknown)
+        .union(read_news(spark, dropped["news"], unknown))
+        .union(read_bigkinds(spark, dropped["bigkinds"], unknown))
     )
     write(dedup(to_df(spark, rdd)))
     logger.info("제외 건수: %s", {k: v.value for k, v in dropped.items()})
+    logger.info("미등록 언론사 제외: %s", unknown.value)
 
 
 def run_incremental(spark, ingest_dates):
     dropped = spark.sparkContext.accumulator(0)
-    new = to_df(spark, read_news(spark, dropped, ingest_dates))
+    unknown = spark.sparkContext.accumulator({}, _CountByKey())
+    new = to_df(spark, read_news(spark, dropped, unknown, ingest_dates))
     dts = [r["dt"] for r in new.select("dt").distinct().collect()]
     if not dts:
         logger.info("적재일 %s 에 신규 기사 없음", ingest_dates)
@@ -111,7 +131,7 @@ def run_incremental(spark, ingest_dates):
         existing = spark.createDataFrame([], SCHEMA)
     spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
     write(dedup(new.union(existing)))
-    logger.info("dt %s 갱신, 실시간 제외 %d건", sorted(dts), dropped.value)
+    logger.info("dt %s 갱신, 실시간 제외 %d건, 미등록 언론사 제외: %s", sorted(dts), dropped.value, unknown.value)
 
 
 if __name__ == "__main__":

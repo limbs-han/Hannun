@@ -83,10 +83,11 @@ def test_realtime_message_without_body_or_broken_json_is_dropped():
     assert st.from_realtime_message("{not json", "2026-09-06") is None
 
 
-def test_unknown_company_fails_loudly():
-    value = json.dumps({"company": "없는신문", "title": "t", "link": "https://a", "published": "2026-09-06T16:40:02+09:00", "article": "본문"})
-    with pytest.raises(KeyError):
+def test_unknown_company_raises_typed_error_with_name():
+    value = json.dumps({"company": "LOADTEST", "title": "t", "link": "https://a", "published": "2026-09-06T16:40:02+09:00", "article": "본문"})
+    with pytest.raises(st.UnknownPublisher) as caught:  # 잡은 이 예외를 잡아 행만 건너뛰고 이름별로 센다
         st.from_realtime_message(value, "2026-09-06")
+    assert caught.value.args[0] == "LOADTEST"
 
 
 def test_bigkinds_line_passes_through_with_partition():
