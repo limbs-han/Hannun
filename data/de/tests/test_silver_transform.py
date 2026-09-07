@@ -42,6 +42,18 @@ def test_dataset_row_becomes_valid_v1_in_utc_with_kst_partition():
     assert record["publisher_id"] == "donga"
 
 
+def test_dataset_row_reads_korean_ampm_and_drops_unparsable_time():
+    base = ["KBS뉴스", "제목", "https://news.kbs.co.kr/news/view.do?ncd=1", None, "", "", "", "본문"]
+    for raw, expected in [("2023-01-01 오후 9:40:00", "2023-01-01T12:40:00Z"),
+                          ("2023-01-01 오전 12:05:00", "2022-12-31T15:05:00Z"),
+                          ("2023-01-01 오후 12:05", "2023-01-01T03:05:00Z"),
+                          ("2023-01-01 09:40:00", "2023-01-01T00:40:00Z"),
+                          ("2023.06.23 10:40", "2023-06-23T01:40:00Z")]:
+        row = base[:3] + [raw] + base[4:]
+        assert st.from_dataset_row(row, "x")["published"] == expected, raw
+    assert st.from_dataset_row(base[:3] + ["2023-01-01 밤 9시"] + base[4:], "x") is None
+
+
 def test_dataset_row_rejects_bad_rows():
     assert st.from_dataset_row(["동아일보", "제목", "https://a.com/1", "2020-01-01 00:30", "", "", "", ""], "x") is None
     assert st.from_dataset_row(["동아일보", "제목", "not-a-url", "2020-01-01 00:30", "", "", "", "본문"], "x") is None
