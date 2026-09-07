@@ -1,6 +1,7 @@
 feedparser
 trafilatura
 confluent-kafka
+jsonschema
 
 # 개발용
 pytest

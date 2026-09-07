@@ -77,14 +77,17 @@ services:
       HADOOP_USER_NAME: root
       # 적재 잡(kafka_to_bronze)이 읽음 — .env 에서 주입, 로컬 미설정이면 빈 값
       KAFKA_BROKER: ${KAFKA_BROKER:-}
-    # ponytail: Spark driver 가 이 컨테이너 안에서 돌므로 여유 필요 — EC2 스펙 확인 후 조정
-    mem_limit: 2g
+    # Spark driver 가 이 컨테이너 안에서 돈다. silver 전체 재구축(CSV 23GB) 기준으로
+    # 6g, 서버 RAM 15Gi 중 HDFS·postgres 몫을 남긴 값
+    mem_limit: 6g
     ports:
       - "8080:8080"
     volumes:
       - ../dags:/opt/airflow/dags
       - ../jobs:/opt/airflow/jobs
       - ../crawler:/opt/airflow/crawler
+      # silver 잡이 데이터셋 정제 규칙(backfill.dataset_sender)을 재사용한다
+      - ../backfill:/opt/airflow/backfill
       # 수집기의 "이미 본 기사" sqlite — 컨테이너 재생성 시에도 보존해야 재발행이 없다
       - crawler-state:/opt/airflow/state
       - airflow-logs:/opt/airflow/logs

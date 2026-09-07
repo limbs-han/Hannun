@@ -22,6 +22,7 @@ import sys
 import time
 
 from crawler.article_id import article_id
+from crawler.publishers import PUBLISHER_ID
 from crawler.rss_collector import encode_link
 
 logger = logging.getLogger(__name__)
@@ -33,19 +34,6 @@ RATE_PER_SEC = float(os.environ.get("SEND_RATE_PER_SEC", "200"))
 
 FILES = ["2019", "2020", "2021", "2022", "2023", "2024_1st_half", "2025_1st_half"]
 ERRORISH = re.compile(r"index out of range|Traceback|NoneType|Error|Exception")
-
-# 데이터셋 34개 언론사 → 내부 코드. article_id 해시 입력이라 임의로 바꾸면 안 된다
-PUBLISHER_ID = {
-    "서울경제": "sedaily", "KBS뉴스": "kbs", "동아일보": "donga", "연합뉴스": "yonhap",
-    "중앙일보": "joongang", "SBS뉴스": "sbs", "국민일보": "kmib", "머니S": "moneys",
-    "서울신문": "seoul", "MBN": "mbn", "뉴스1": "news1", "파이낸셜뉴스": "fnnews",
-    "데일리안": "dailian", "한겨례": "hani", "더팩트": "tf", "JTBC": "jtbc",
-    "한국경제TV": "wowtv", "TV조선": "tvchosun", "세계일보": "segye", "매일신문": "imaeil",
-    "오마이뉴스": "ohmynews", "아시아경제": "asiae", "문화일보": "munhwa", "블로터": "bloter",
-    "코메디닷컴": "kormedi", "여성신문": "womennews", "디지털타임": "dt", "조세일보": "joseilbo",
-    "경기일보": "kyeonggi", "시사저널": "sisajournal", "비즈니스워치": "bizwatch",
-    "미디어오늘": "mediatoday", "국제신문": "kookje", "디지털데일리": "ddaily",
-}
 
 
 def clean_text(s):
