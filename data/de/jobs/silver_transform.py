@@ -55,10 +55,19 @@ def kst_date(utc_z):
     return parsed.astimezone(KST).strftime("%Y-%m-%d")
 
 
+class UnknownPublisher(KeyError):
+    """매핑 표에 없는 언론사. 잡은 이 행만 건너뛰고 언론사별 건수를 따로 집계한다.
+
+    처음엔 잡 전체를 멈추게 했는데, BE 부하테스트 메시지(company=LOADTEST) 222만 건이
+    운영 토픽으로 들어온 실측(2026-09-07)이 있어 한 건이 15분 파이프라인을 죽이지 않게 바꿨다.
+    """
+
+
 def _record(company, title, link, published_utc, category, category_str, reporter, article,
             source_type, thumbnail_url, crawled_at):
-    # 미등록 언론사는 KeyError 로 잡 전체를 멈춘다. 조용히 넘기면 article_id 가 틀어진다
-    publisher_id = PUBLISHER_ID[company]
+    publisher_id = PUBLISHER_ID.get(company)
+    if publisher_id is None:
+        raise UnknownPublisher(company)
     return {
         "company": company,
         "title": title,
