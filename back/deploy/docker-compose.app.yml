@@ -1,4 +1,15 @@
-name: news-platform
+﻿name: news-platform
+
+x-app-env: &app-env
+  # 로컬 application.yml은 전부 localhost 기준이라, 컨테이너에서는 같은 네트워크의 서비스명으로 덮어씀
+  SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
+  SPRING_DATASOURCE_USERNAME: news
+  SPRING_DATASOURCE_PASSWORD: news1234
+  SPRING_DATA_REDIS_HOST: redis
+  SPRING_DATA_REDIS_PORT: "6379"
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka1:19092,kafka2:19092,kafka3:19092
+  # 컨테이너 메모리 제한(1024m)의 75%까지 힙으로 쓰게 함 — 기본값(25%)이면 256m밖에 못 씀
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
 
 x-app-common: &app-common
   build:
@@ -9,43 +20,52 @@ x-app-common: &app-common
   # SIGTERM 받고 Spring이 graceful shutdown(진행 중인 요청/컨슈머 poll 마무리, server.shutdown=graceful) 끝낼 때까지
   # 도커가 SIGKILL 안 보내고 기다려주는 최대 시간. Spring 쪽 타임아웃(30s)보다 넉넉하게.
   stop_grace_period: 40s
-  environment:
-    # 로컬 application.yml은 전부 localhost 기준이라, 컨테이너에서는 같은 네트워크의 서비스명으로 덮어씀
-    SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
-    SPRING_DATASOURCE_USERNAME: news
-    SPRING_DATASOURCE_PASSWORD: news1234
-    SPRING_DATA_REDIS_HOST: redis
-    SPRING_DATA_REDIS_PORT: "6379"
-    SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka1:19092,kafka2:19092,kafka3:19092
-    # 컨테이너 메모리 제한(1024m)의 75%까지 힙으로 쓰게 함 — 기본값(25%)이면 256m밖에 못 씀
-    JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
+  # Pinpoint 에이전트(데이터 머신 EC2 A에 별도로 띄운 collector로 트레이스 전송) - 읽기 뿐 아니라 지금
+  # 쓰기 쪽 개별 호출(예: kafka ack commit) 단위로 상세 트레이스가 필요해져서 도입. 호스트 디렉토리를
+  # 읽기 전용으로 마운트만 하면 되고, 이미지 재빌드 불필요.
+  volumes:
+    - /home/ubuntu/pinpoint-agent/pinpoint-agent-3.1.0:/pinpoint-agent
   networks:
     - news-net
 
 # 블루그린 배포용 — blue/green 각각 2개씩 정의해두고, deploy.sh가 배포할 때마다 비활성 색상 쪽만 새로 빌드/기동함.
 # 상시 4개가 다 떠있는 게 아니라, 배포 중 짧은 시간만 4개(구+신) 동시에 떠있고 평소엔 활성 색상 2개만 떠있음.
+# JAVA_TOOL_OPTIONS는 인스턴스마다 -Dpinpoint.agentId만 다르게 완전히 새로 정의함(Pinpoint는 agentId가
+# 인스턴스마다 고유해야 함 - 같으면 UI에서 서로 덮어씀). 나머지 환경변수는 x-app-env를 그대로 merge.
 services:
   app-blue-1:
     <<: *app-common
     container_name: news-app-blue-1
+    environment:
+      <<: *app-env
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -javaagent:/pinpoint-agent/pinpoint-bootstrap.jar -Dpinpoint.applicationName=news-write-service -Dpinpoint.profiler.profiles.active=release -Dpinpoint.agentId=blue-1"
     ports:
       - "8080:8080"
 
   app-blue-2:
     <<: *app-common
     container_name: news-app-blue-2
+    environment:
+      <<: *app-env
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -javaagent:/pinpoint-agent/pinpoint-bootstrap.jar -Dpinpoint.applicationName=news-write-service -Dpinpoint.profiler.profiles.active=release -Dpinpoint.agentId=blue-2"
     ports:
       - "8081:8080"
 
   app-green-1:
     <<: *app-common
     container_name: news-app-green-1
+    environment:
+      <<: *app-env
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -javaagent:/pinpoint-agent/pinpoint-bootstrap.jar -Dpinpoint.applicationName=news-write-service -Dpinpoint.profiler.profiles.active=release -Dpinpoint.agentId=green-1"
     ports:
       - "8082:8080"
 
   app-green-2:
     <<: *app-common
     container_name: news-app-green-2
+    environment:
+      <<: *app-env
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -javaagent:/pinpoint-agent/pinpoint-bootstrap.jar -Dpinpoint.applicationName=news-write-service -Dpinpoint.profiler.profiles.active=release -Dpinpoint.agentId=green-2"
     ports:
       - "8083:8080"
 
