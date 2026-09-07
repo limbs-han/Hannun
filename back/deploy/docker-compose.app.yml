@@ -5,6 +5,12 @@ x-app-env: &app-env
   SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
   SPRING_DATASOURCE_USERNAME: news
   SPRING_DATASOURCE_PASSWORD: news1234
+  # article-ingest 전용 풀(news.datasource.article-ingest.*, Bulkhead 패턴)도 커스텀 프로퍼티라
+  # 위와 별개로 각자 env override 필요 - 이거 빠뜨려서 application.yml의 localhost 기본값이 그대로
+  # 컨테이너에서 쓰여 Connection refused 나던 버그 수정 (2026-09-07)
+  NEWS_DATASOURCE_ARTICLE_INGEST_URL: jdbc:mysql://mysql:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
+  NEWS_DATASOURCE_ARTICLE_INGEST_USERNAME: news
+  NEWS_DATASOURCE_ARTICLE_INGEST_PASSWORD: news1234
   SPRING_DATA_REDIS_HOST: redis
   SPRING_DATA_REDIS_PORT: "6379"
   SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka1:19092,kafka2:19092,kafka3:19092
