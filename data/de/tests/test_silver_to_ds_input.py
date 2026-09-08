@@ -84,3 +84,29 @@ def test_normalize_staging_joins_split_day_into_one_file(tmp_path):
     year = tmp_path / "out" / "2020"
     assert [f.name for f in year.iterdir()] == ["2020-05-06.jsonl"]  # 하루 = 파일 하나
     assert year.joinpath("2020-05-06.jsonl").read_text(encoding="utf-8") == a + b
+
+
+def test_stale_days_picks_missing_and_outdated_only(tmp_path):
+    import os
+    out = tmp_path / "out"
+    (out / "2026").mkdir(parents=True)
+    fresh = out / "2026" / "2026-09-07.jsonl"
+    fresh.write_text("x", encoding="utf-8")
+    os.utime(fresh, (2000, 2000))  # 파일이 silver 보다 최신
+    old = out / "2026" / "2026-06-09.jsonl"
+    old.write_text("x", encoding="utf-8")
+    os.utime(old, (1000, 1000))   # 파일이 silver 보다 뒤처짐
+    mtimes = {"2026-09-07": 1500.0, "2026-06-09": 1800.0, "2026-09-08": 1900.0}
+    # 뒤처진 옛 날짜와 파일이 없는 날짜만 고른다. 최근 며칠이라는 창을 쓰지 않는 이유는
+    # RSS 가 몇 달 전 기사를 뒤늦게 주면 그 날짜가 창 밖으로 밀려나기 때문이다
+    assert ex.stale_days(mtimes, str(out)) == ["2026-06-09", "2026-09-08"]
+
+
+def test_stale_days_empty_when_everything_current(tmp_path):
+    import os
+    out = tmp_path / "out"
+    (out / "2026").mkdir(parents=True)
+    f = out / "2026" / "2026-09-07.jsonl"
+    f.write_text("x", encoding="utf-8")
+    os.utime(f, (3000, 3000))
+    assert ex.stale_days({"2026-09-07": 1000.0}, str(out)) == []
