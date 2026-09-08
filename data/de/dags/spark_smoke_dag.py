@@ -8,6 +8,11 @@ from datetime import datetime
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+# Spark 드라이버가 airflow 컨테이너 안에서 돌아 메모리가 6GB 로 한정된다. 두 잡이 겹치면
+# 상한에 닿고, silver 를 덮어쓰는 중에 읽는 사고도 난다. 자리 하나짜리 대기줄에 세워
+# 한 번에 하나만 돌게 한다 (대기줄 만들기는 infra/README 참고)
+SPARK_POOL = "spark_local"
+
 with DAG(
     dag_id="spark_smoke",
     start_date=datetime(2026, 8, 1),
@@ -18,5 +23,6 @@ with DAG(
 ) as dag:
     BashOperator(
         task_id="hdfs_roundtrip",
+        pool=SPARK_POOL,
         bash_command="spark-submit --master 'local[*]' /opt/airflow/jobs/hdfs_smoke.py",
     )

@@ -17,8 +17,16 @@ Kafka 는 BE 소유(B 서버) — 여기서는 원격 브로커 주소만 참조
 - `postgres` — Airflow 메타DB (LocalExecutor 는 SQLite 미지원)
 - B 서버 백업 키는 `~/secrets/b.pem`(호스트 소유자 uid 50000)에 두고 읽기 전용으로 마운트한다.
   컨테이너가 uid 50000 으로 돌기 때문에 소유자가 다르면 ssh 가 키를 읽지 못한다
+- **Spark 대기줄**: Spark 를 쓰는 DAG 태스크는 `spark_local` 대기줄(자리 1개)에 세워 한 번에
+  하나만 돌게 한다. 드라이버가 airflow 컨테이너 안에서 돌아 메모리가 6GB 로 한정되고, silver 를
+  덮어쓰는 중에 읽는 사고도 막아야 한다. 대기줄은 메타DB 에 저장되므로 배포 후 1회만 만든다:
+  `docker compose exec airflow airflow pools set spark_local 1 "Spark 드라이버 1개"`
+  대기줄이 없으면 해당 태스크가 실행되지 않으니, 메타DB 를 새로 만들면 다시 등록한다
 - DS 입력 폴더 `~/ds_input` 도 같은 이유로 소유자를 맞춘다. 호스트에서 읽을 수 있게 755 로 둔다:
   `mkdir -p ~/ds_input && sudo chown 50000:0 ~/ds_input && sudo chmod 755 ~/ds_input`
+- DS 입력 전체 내리기는 1회성이라 파이프라인을 멈추고 돌린다. 39GB·2~3시간 예상이며,
+  대기줄 자리가 하나라 켜둔 채로 돌리면 15분 배치가 그만큼 밀린다:
+  `docker compose exec airflow airflow dags pause bronze_ingest` → `spark-submit ... --bulk` → unpause
 
 ## EC2 부트스트랩 (도착 당일)
 

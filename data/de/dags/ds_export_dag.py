@@ -16,6 +16,11 @@ import pendulum
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+# Spark 드라이버가 airflow 컨테이너 안에서 돌아 메모리가 6GB 로 한정된다. 두 잡이 겹치면
+# 상한에 닿고, silver 를 덮어쓰는 중에 읽는 사고도 난다. 자리 하나짜리 대기줄에 세워
+# 한 번에 하나만 돌게 한다 (대기줄 만들기는 infra/README 참고)
+SPARK_POOL = "spark_local"
+
 KST = pendulum.timezone("Asia/Seoul")
 
 with DAG(
@@ -29,6 +34,7 @@ with DAG(
 ) as dag:
     BashOperator(
         task_id="silver_to_ds_input",
+        pool=SPARK_POOL,
         # 날짜 계산은 잡이 한국 날짜로 직접 한다 — Airflow 템플릿으로 시간대를 넘기면 하루 밀린다
         bash_command=(
             "spark-submit --master 'local[*]' --driver-memory 2g "
