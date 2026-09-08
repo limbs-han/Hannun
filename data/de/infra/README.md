@@ -15,8 +15,10 @@ Kafka 는 BE 소유(B 서버) — 여기서는 원격 브로커 주소만 참조
 - `airflow/Dockerfile` — Airflow + JDK + pyspark + 크롤러 의존성. Spark 는 별도 클러스터 없이
   DAG 태스크가 `spark-submit --master local[*]` 로 이 컨테이너 안에서 실행
 - `postgres` — Airflow 메타DB (LocalExecutor 는 SQLite 미지원)
-- B 서버 백업 키는 `~/secrets/b.pem`(호스트 소유자 uid 50000)에 두고 읽기 전용으로 마운트한다.
-  컨테이너가 uid 50000 으로 돌기 때문에 소유자가 다르면 ssh 가 키를 읽지 못한다
+- B 서버 백업 키는 `~/.ssh/b-airflow.pem`(호스트 소유자 uid 50000)에 두고 읽기 전용으로
+  마운트한다. 컨테이너가 uid 50000 으로 돌기 때문에 소유자가 다르면 ssh 가 키를 읽지 못한다.
+  사람이 서버에서 직접 쓰는 `~/.ssh/b.pem` 은 계정 소유라 그대로 두고, 이름만 나눠 둔다:
+  `sudo cp ~/.ssh/b.pem ~/.ssh/b-airflow.pem && sudo chown 50000:0 ~/.ssh/b-airflow.pem && sudo chmod 600 ~/.ssh/b-airflow.pem`
 - **Spark 대기줄**: Spark 를 쓰는 DAG 태스크는 `spark_local` 대기줄(자리 1개)에 세워 한 번에
   하나만 돌게 한다. 드라이버가 airflow 컨테이너 안에서 돌아 메모리가 6GB 로 한정되고, silver 를
   덮어쓰는 중에 읽는 사고도 막아야 한다. 대기줄은 메타DB 에 저장되므로 배포 후 1회만 만든다:
