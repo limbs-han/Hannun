@@ -7,7 +7,7 @@ Kafka 는 BE 소유(B 서버) — 여기서는 원격 브로커 주소만 참조
 
 - `docker-compose.yml` — NameNode + DataNode 1대. 복제 계수 1 (하둡 공식 싱글노드 표준).
   단일 머신에서 복제 2는 같은 디스크에 사본을 두는 가짜 안전이라 쓰지 않는다.
-  유실 대비는 새벽 백업(B 서버 rsync)이 담당.
+  유실 대비는 새벽 정비 DAG 의 B 서버 백업이 담당 — 대상과 복구 절차는 `docs/backup-restore.md`.
 - `hadoop.env` — HDFS 설정 (이미지가 `CORE-SITE.XML_*` 형식 환경변수를 설정 파일로 변환)
 - `.env.example` — 환경별 값 (`KAFKA_BROKER`, `HDFS_UI_PORT`). `.env` 로 복사해 사용, 커밋 금지
 - `create_topics.sh` — BE Kafka 에 토픽 생성 (자동 생성은 파티션 1 기본값으로 만들어버리므로 금지)
@@ -15,6 +15,8 @@ Kafka 는 BE 소유(B 서버) — 여기서는 원격 브로커 주소만 참조
 - `airflow/Dockerfile` — Airflow + JDK + pyspark + 크롤러 의존성. Spark 는 별도 클러스터 없이
   DAG 태스크가 `spark-submit --master local[*]` 로 이 컨테이너 안에서 실행
 - `postgres` — Airflow 메타DB (LocalExecutor 는 SQLite 미지원)
+- B 서버 백업 키는 `~/secrets/b.pem`(호스트 소유자 uid 50000)에 두고 읽기 전용으로 마운트한다.
+  컨테이너가 uid 50000 으로 돌기 때문에 소유자가 다르면 ssh 가 키를 읽지 못한다
 
 ## EC2 부트스트랩 (도착 당일)
 
