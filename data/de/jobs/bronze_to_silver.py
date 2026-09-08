@@ -73,7 +73,11 @@ def read_dataset(spark, crawled_at, dropped, unknown):
 
 
 def read_news(spark, dropped, unknown, ingest_dates=None):
-    df = spark.read.text(f"{LAKE}/bronze/news")  # ingest_date= 파티션 컬럼이 따라온다
+    # ingest_date=* 로 읽는 이유: 폴더 뿌리를 그대로 읽으면 Spark 가 스트리밍 sink 의 파일
+    # 목록 장부(_spark_metadata)만 신뢰해서, 새벽 합치기(S15P21E105-74)로 바뀐 파일을 못 본다.
+    # basePath 를 주면 장부를 거치지 않고도 ingest_date 파티션 컬럼이 그대로 따라온다
+    df = (spark.read.option("basePath", f"{LAKE}/bronze/news")
+          .text(f"{LAKE}/bronze/news/ingest_date=*"))
     if ingest_dates:
         df = df.where(col("ingest_date").isin(ingest_dates))
     tx = _counting(from_realtime_message, dropped, unknown)

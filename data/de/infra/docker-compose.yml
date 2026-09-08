@@ -72,6 +72,10 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # 새벽 정비 DAG(S15P21E105-74)의 03:00 을 KST 로 해석하게 한다. 기본값 UTC 로 두면
+      # 예약이 정오에 잡힌다
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+      AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: Asia/Seoul
       # NameNode 가 root 로 돌아 / 가 root 소유 — 무인증(simple auth) HDFS 라
       # 클라이언트가 선언한 유저를 그대로 믿으므로 root 로 선언해 쓰기 권한 확보
       HADOOP_USER_NAME: root
@@ -90,6 +94,9 @@ services:
       - ../backfill:/opt/airflow/backfill
       # 수집기의 "이미 본 기사" sqlite — 컨테이너 재생성 시에도 보존해야 재발행이 없다
       - crawler-state:/opt/airflow/state
+      # B 서버 백업 전송용 키(S15P21E105-74). 읽기 전용이고 커밋하지 않는다. 컨테이너가
+      # uid 50000 으로 돌아 호스트 파일 소유자도 50000 이어야 ssh 가 읽는다 (infra/README 참고)
+      - ~/secrets/b.pem:/opt/airflow/.ssh/b.pem:ro
       - airflow-logs:/opt/airflow/logs
     depends_on:
       - postgres
