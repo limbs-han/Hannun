@@ -85,7 +85,9 @@ services:
     # 6g, 서버 RAM 15Gi 중 HDFS·postgres 몫을 남긴 값
     mem_limit: 6g
     ports:
-      - "8080:8080"
+      # HDFS UI 와 같은 이유로 서버 내부 전용. 화면에서 DAG 를 돌릴 수 있어 사실상 실행 권한이고,
+      # DS 실행 환경이 도커를 부르게 되면 그 권한이 서버 관리자 권한까지 닿는다. 접속은 SSH 터널로
+      - "127.0.0.1:${AIRFLOW_UI_PORT:-8080}:8080"
     volumes:
       - ../dags:/opt/airflow/dags
       - ../jobs:/opt/airflow/jobs

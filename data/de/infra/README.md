@@ -62,7 +62,9 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ## 웹 UI
 
 접속 주소·pem 보관·SSH 터널은 `data/docs/ec2-a-access.md` 참고.
-HDFS UI(9870)는 무인증이라 compose 에서 서버 내부 전용(127.0.0.1)으로 묶여 있다.
+HDFS UI(9870)와 Airflow UI(8080)는 모두 compose 에서 서버 내부 전용(127.0.0.1)으로 묶여 있어
+SSH 터널로만 접속한다. Airflow 화면에서 DAG 를 돌릴 수 있어 사실상 실행 권한이며, DS 실행 환경이
+도커를 부르게 되면 그 권한이 서버 관리자 권한까지 닿기 때문이다.
 
 ## 전 구간 검증
 
