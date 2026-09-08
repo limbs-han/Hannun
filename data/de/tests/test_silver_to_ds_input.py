@@ -37,16 +37,18 @@ def test_json_line_drops_partition_column_and_keeps_hangul():
     assert "연합뉴스" in ex.to_json_line(row)  # 한글이 그대로 보여야 사람이 읽을 수 있다
 
 
-def test_day_dir_groups_by_year_without_partition_prefix():
-    # 연도로 묶는 이유는 전체를 내리면 날짜 폴더가 2,800개가 되기 때문이다.
-    # dt= 접두어는 Spark 용이라 DS 에게는 아무 역할을 하지 않는다
-    assert ex.day_dir("/ds_input", "2026-09-07").replace("\\", "/") == "/ds_input/2026/2026-09-07"
-    assert ex.day_dir("/ds_input", "2019-01-01").replace("\\", "/") == "/ds_input/2019/2019-01-01"
+def test_day_file_is_one_file_per_day_under_year_folder():
+    # 하루에 폴더를 두지 않는다 — 파일이 하나뿐이라 폴더가 아무 역할을 하지 않는다.
+    # dt= 접두어는 Spark 용이라 DS 에게는 쓸모없다
+    got = ex.day_file("/ds_input", "2026-09-07").replace(chr(92), "/")
+    assert got == "/ds_input/2026/2026-09-07.jsonl"
+    old = ex.day_file("/ds_input", "2019-01-01").replace(chr(92), "/")
+    assert old == "/ds_input/2019/2019-01-01.jsonl"
 
 
 def test_staging_path_is_unique_per_process():
     import os
-    final = "/ds_input/2026-09-07/articles.jsonl"
+    final = "/ds_input/2026/2026-09-07.jsonl"
     staging = ex.staging_path(final)
     assert staging.startswith(final + ".tmp.")
     assert str(os.getpid()) in staging  # 두 프로세스가 같은 날짜를 내려도 섞이지 않는다
@@ -61,22 +63,24 @@ def _staging(tmp_path, day, parts):
     return tmp_path / "_staging"
 
 
-def test_normalize_staging_renames_single_part_and_moves_into_year(tmp_path):
+def test_normalize_staging_moves_single_part_to_day_file(tmp_path):
     line = chr(123) + chr(34) + "a" + chr(34) + ":1" + chr(125) + chr(10)  # {"a":1} 한 줄
     staging = _staging(tmp_path, "2019-03-04",
                        {"part-00000-a.c000.json": line, "_SUCCESS": ""})
     assert ex.normalize_staging(str(staging), str(tmp_path / "out")) == 1
-    moved = tmp_path / "out" / "2019" / "2019-03-04" / "articles.jsonl"
+    moved = tmp_path / "out" / "2019" / "2019-03-04.jsonl"
     # 확장자가 .jsonl 이어야 DS 가 줄 단위로 읽는다
     assert moved.read_text(encoding="utf-8") == line
     assert not staging.exists()  # 임시 폴더는 남기지 않는다
 
 
-def test_normalize_staging_keeps_every_part_when_day_is_split(tmp_path):
+def test_normalize_staging_joins_split_day_into_one_file(tmp_path):
+    # 하루가 쪼개져도 파일 하나로 합친다 — 조각 하나만 읽어 나머지를 놓치는 일을 막는다
+    a = chr(123) + chr(34) + "a" + chr(34) + ":1" + chr(125) + chr(10)
+    b = chr(123) + chr(34) + "b" + chr(34) + ":2" + chr(125) + chr(10)
     staging = _staging(tmp_path, "2020-05-06",
-                       {"part-00000-a.c000.json": "a", "part-00001-b.c000.json": "b"})
+                       {"part-00000-a.c000.json": a, "part-00001-b.c000.json": b})
     ex.normalize_staging(str(staging), str(tmp_path / "out"))
-    day = tmp_path / "out" / "2020" / "2020-05-06"
-    assert sorted(f.name for f in day.iterdir()) == ["articles-0.jsonl", "articles-1.jsonl"]
-    # DS 는 폴더 안 파일을 모두 읽으므로 하루가 여러 파일이어도 된다
-    assert sorted(f.read_text(encoding="utf-8") for f in day.iterdir()) == ["a", "b"]
+    year = tmp_path / "out" / "2020"
+    assert [f.name for f in year.iterdir()] == ["2020-05-06.jsonl"]  # 하루 = 파일 하나
+    assert year.joinpath("2020-05-06.jsonl").read_text(encoding="utf-8") == a + b

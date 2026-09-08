@@ -4,7 +4,7 @@ DS 파이프라인(hannun-ingest)은 로컬 파일만 읽고 형식은 .json/.js
 받는다. silver 는 HDFS parquet 이라 그대로는 읽을 수 없어, 날짜별로 한 파일씩
 로컬에 풀어준다. DS 코드는 손대지 않는다.
 
-  <out>/YYYY/YYYY-MM-DD/articles.jsonl   (비압축, 한 줄에 기사 하나)
+  <out>/YYYY/YYYY-MM-DD.jsonl   (비압축, 한 줄에 기사 하나, 하루는 항상 파일 하나)
 
 파일명이 .jsonl 이어야 한다 — DS 의 reader 는 .json 을 한 덩어리 JSON 으로 읽어서
 확장자가 .json 이면 파싱이 깨진다. 그래서 Spark 쓰기 대신 드라이버에서 직접 쓴다.
@@ -71,11 +71,14 @@ def to_json_line(row):
     return json.dumps(record, ensure_ascii=False)
 
 
-def day_dir(out_root, day):
-    """DS 가 읽는 날짜 폴더. 연도로 한 번 묶는다 — 전체를 내리면 날짜 폴더가 2,800개라
-    한 곳에 두면 사람이 다루기 어렵고, 연도만 골라 넣기도 어렵다. lake 와 달리 dt=
-    접두어는 붙이지 않는다. DS 는 Spark 가 아니라 파일 경로로 읽어 접두어가 쓸모없다."""
-    return os.path.join(out_root, day[:4], day)
+def day_file(out_root, day):
+    """DS 가 읽는 하루 파일. 연도로 묶고 날짜를 파일명으로 쓴다.
+
+    하루에 폴더를 두지 않는 이유는 파일이 하나뿐이라 폴더가 아무 역할을 하지 않고,
+    연도 폴더에서 날짜와 크기를 한눈에 보기 어려워지기 때문이다. lake 와 달리 dt=
+    접두어도 붙이지 않는다. DS 는 Spark 가 아니라 파일 경로로 읽어 접두어가 쓸모없다.
+    하루가 항상 파일 하나라는 약속을 지키므로 읽는 쪽은 이 경로만 알면 된다."""
+    return os.path.join(out_root, day[:4], f"{day}.jsonl")
 
 
 def staging_path(final):
@@ -85,16 +88,15 @@ def staging_path(final):
 
 
 def export_day(spark, day, out_root):
-    """하루치를 <out_root>/<day>/articles.jsonl 로 쓴다. 파티션이 없으면 None."""
+    """하루치를 <out_root>/<연도>/<날짜>.jsonl 로 쓴다. 파티션이 없으면 None."""
     try:
         rows = spark.read.parquet(f"{SILVER}/dt={day}")
     except AnalysisException:
         logger.info("silver 에 없는 날짜, 건너뜀: %s", day)
         return None
 
-    out_dir = day_dir(out_root, day)
-    os.makedirs(out_dir, exist_ok=True)
-    final = os.path.join(out_dir, "articles.jsonl")
+    final = day_file(out_root, day)
+    os.makedirs(os.path.dirname(final), exist_ok=True)
     staging = staging_path(final)
 
     count = 0
@@ -113,7 +115,11 @@ def normalize_staging(staging, out_root):
     """Spark 가 쓴 dt=<날짜>/part-*.json 을 DS 가 읽는 이름과 자리로 옮긴다.
 
     Spark 쓰기는 파일명을 정할 수 없어 확장자가 .json 으로 나온다. DS 는 .json 을 한
-    덩어리 JSON 으로 읽어 그대로 두면 파싱이 깨진다. 같은 파일시스템이라 옮기기는 즉시다.
+    덩어리 JSON 으로 읽어 그대로 두면 파싱이 깨진다.
+
+    하루가 여러 조각으로 나뉘면 이어붙여 파일 하나로 만든다. 하루가 항상 파일 하나여야
+    읽는 쪽이 그 경로만 알면 되고, 조각 하나만 가리켜 나머지를 조용히 빼먹는 일이 없다.
+    쪼개지는 것은 하루가 Spark 의 분할 기준(128MB)을 넘을 때뿐이라 비용은 거의 안 든다.
     """
     days = 0
     for name in sorted(os.listdir(staging)):
@@ -121,13 +127,19 @@ def normalize_staging(staging, out_root):
             continue  # _SUCCESS 등
         day = name[len("dt="):]
         source = os.path.join(staging, name)
-        target = day_dir(out_root, day)
-        os.makedirs(target, exist_ok=True)
-        parts = sorted(f for f in os.listdir(source) if f.startswith("part-"))
-        for index, part in enumerate(parts):
-            # 하루가 여러 파일로 나뉘어도 DS 는 폴더 안 파일을 모두 읽는다
-            filename = "articles.jsonl" if len(parts) == 1 else f"articles-{index}.jsonl"
-            os.replace(os.path.join(source, part), os.path.join(target, filename))
+        final = day_file(out_root, day)
+        os.makedirs(os.path.dirname(final), exist_ok=True)
+        parts = sorted(os.path.join(source, f) for f in os.listdir(source) if f.startswith("part-"))
+        if len(parts) == 1:
+            os.replace(parts[0], final)  # 같은 파일시스템이라 옮기기는 즉시다
+        else:
+            logger.info("%s 는 %d조각 — 이어붙임", day, len(parts))
+            with open(parts[0], "ab") as first:
+                for extra in parts[1:]:
+                    with open(extra, "rb") as chunk:
+                        shutil.copyfileobj(chunk, first)
+                    os.remove(extra)
+            os.replace(parts[0], final)
         days += 1
     shutil.rmtree(staging, ignore_errors=True)
     return days
