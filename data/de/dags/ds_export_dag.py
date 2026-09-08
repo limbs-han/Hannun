@@ -3,8 +3,9 @@
 silver 를 DS 가 읽는 로컬 JSONL 로 풀어준다. 03:00 새벽 정비가 끝난 뒤인 04:00 KST 에
 돌려, 파일 합치기와 silver 갱신이 안정된 상태를 내보낸다.
 
-최근 3일을 다시 내리는 이유: 지난 날짜 파티션에도 기사가 뒤늦게 추가된다 (RSS 가 며칠 전
-기사를 준다). 같은 날짜를 다시 써도 안전하고 하루치가 수십 MB 라 비용이 작다.
+내려주는 날짜는 고정된 최근 며칠이 아니라 silver 가 파일보다 새로운 날짜 전부다. RSS 가
+몇 달 전 기사를 뒤늦게 주면 그 옛 날짜의 silver 가 갱신되는데, 창을 며칠로 고정하면 그
+기사는 DS 에게 영구히 가지 않는다.
 
 DS 단계(hannun-ingest 이후)는 이 DAG 뒤에 붙일 자리다 — stance·enrichment 의 명령어와
 실행 환경 격리 방식이 정해지면 태스크로 이어 붙인다.
@@ -35,9 +36,8 @@ with DAG(
     BashOperator(
         task_id="silver_to_ds_input",
         pool=SPARK_POOL,
-        # 날짜 계산은 잡이 한국 날짜로 직접 한다 — Airflow 템플릿으로 시간대를 넘기면 하루 밀린다
         bash_command=(
             "spark-submit --master 'local[*]' --driver-memory 2g "
-            "/opt/airflow/jobs/silver_to_ds_input.py --recent 3"
+            "/opt/airflow/jobs/silver_to_ds_input.py --sync"
         ),
     )
