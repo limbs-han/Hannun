@@ -17,6 +17,8 @@ Kafka 는 BE 소유(B 서버) — 여기서는 원격 브로커 주소만 참조
 - `postgres` — Airflow 메타DB (LocalExecutor 는 SQLite 미지원)
 - B 서버 백업 키는 `~/secrets/b.pem`(호스트 소유자 uid 50000)에 두고 읽기 전용으로 마운트한다.
   컨테이너가 uid 50000 으로 돌기 때문에 소유자가 다르면 ssh 가 키를 읽지 못한다
+- DS 입력 폴더 `~/ds_input` 도 같은 이유로 소유자를 맞춘다. 호스트에서 읽을 수 있게 755 로 둔다:
+  `mkdir -p ~/ds_input && sudo chown 50000:0 ~/ds_input && sudo chmod 755 ~/ds_input`
 
 ## EC2 부트스트랩 (도착 당일)
 

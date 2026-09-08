@@ -94,6 +94,9 @@ services:
       - ../backfill:/opt/airflow/backfill
       # 수집기의 "이미 본 기사" sqlite — 컨테이너 재생성 시에도 보존해야 재발행이 없다
       - crawler-state:/opt/airflow/state
+      # DS 입력 내려주는 폴더. DS 파이프라인이 로컬 파일만 읽어서 호스트와 공유한다.
+      # 호스트 폴더 소유자가 uid 50000 이어야 컨테이너가 쓸 수 있다 (infra/README 참고)
+      - ~/ds_input:/opt/airflow/ds_input
       # B 서버 백업 전송용 키(S15P21E105-74). 읽기 전용이고 커밋하지 않는다. 컨테이너가
       # uid 50000 으로 돌아 호스트 파일 소유자도 50000 이어야 ssh 가 읽는다 (infra/README 참고)
       - ~/secrets/b.pem:/opt/airflow/.ssh/b.pem:ro
