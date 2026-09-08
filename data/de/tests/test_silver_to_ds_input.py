@@ -37,9 +37,11 @@ def test_json_line_drops_partition_column_and_keeps_hangul():
     assert "연합뉴스" in ex.to_json_line(row)  # 한글이 그대로 보여야 사람이 읽을 수 있다
 
 
-def test_day_dir_has_no_partition_prefix():
-    # DS 는 Spark 가 아니라 파일 경로로 읽어서 dt= 접두어가 아무 역할을 하지 않는다
-    assert ex.day_dir("/ds_input", "2026-09-07").replace("\\", "/") == "/ds_input/2026-09-07"
+def test_day_dir_groups_by_year_without_partition_prefix():
+    # 연도로 묶는 이유는 전체를 내리면 날짜 폴더가 2,800개가 되기 때문이다.
+    # dt= 접두어는 Spark 용이라 DS 에게는 아무 역할을 하지 않는다
+    assert ex.day_dir("/ds_input", "2026-09-07").replace("\\", "/") == "/ds_input/2026/2026-09-07"
+    assert ex.day_dir("/ds_input", "2019-01-01").replace("\\", "/") == "/ds_input/2019/2019-01-01"
 
 
 def test_staging_path_is_unique_per_process():
@@ -49,3 +51,32 @@ def test_staging_path_is_unique_per_process():
     assert staging.startswith(final + ".tmp.")
     assert str(os.getpid()) in staging  # 두 프로세스가 같은 날짜를 내려도 섞이지 않는다
     assert staging != final
+
+
+def _staging(tmp_path, day, parts):
+    d = tmp_path / "_staging" / f"dt={day}"
+    d.mkdir(parents=True)
+    for name, text in parts.items():
+        (d / name).write_text(text, encoding="utf-8")
+    return tmp_path / "_staging"
+
+
+def test_normalize_staging_renames_single_part_and_moves_into_year(tmp_path):
+    line = chr(123) + chr(34) + "a" + chr(34) + ":1" + chr(125) + chr(10)  # {"a":1} 한 줄
+    staging = _staging(tmp_path, "2019-03-04",
+                       {"part-00000-a.c000.json": line, "_SUCCESS": ""})
+    assert ex.normalize_staging(str(staging), str(tmp_path / "out")) == 1
+    moved = tmp_path / "out" / "2019" / "2019-03-04" / "articles.jsonl"
+    # 확장자가 .jsonl 이어야 DS 가 줄 단위로 읽는다
+    assert moved.read_text(encoding="utf-8") == line
+    assert not staging.exists()  # 임시 폴더는 남기지 않는다
+
+
+def test_normalize_staging_keeps_every_part_when_day_is_split(tmp_path):
+    staging = _staging(tmp_path, "2020-05-06",
+                       {"part-00000-a.c000.json": "a", "part-00001-b.c000.json": "b"})
+    ex.normalize_staging(str(staging), str(tmp_path / "out"))
+    day = tmp_path / "out" / "2020" / "2020-05-06"
+    assert sorted(f.name for f in day.iterdir()) == ["articles-0.jsonl", "articles-1.jsonl"]
+    # DS 는 폴더 안 파일을 모두 읽으므로 하루가 여러 파일이어도 된다
+    assert sorted(f.read_text(encoding="utf-8") for f in day.iterdir()) == ["a", "b"]
