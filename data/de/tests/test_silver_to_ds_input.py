@@ -35,3 +35,17 @@ def test_json_line_drops_partition_column_and_keeps_hangul():
     assert "dt" not in parsed  # article_v1 에 없는 필드라 DS 에 넘기지 않는다
     assert parsed["company"] == "연합뉴스"
     assert "연합뉴스" in ex.to_json_line(row)  # 한글이 그대로 보여야 사람이 읽을 수 있다
+
+
+def test_day_dir_has_no_partition_prefix():
+    # DS 는 Spark 가 아니라 파일 경로로 읽어서 dt= 접두어가 아무 역할을 하지 않는다
+    assert ex.day_dir("/ds_input", "2026-09-07").replace("\\", "/") == "/ds_input/2026-09-07"
+
+
+def test_staging_path_is_unique_per_process():
+    import os
+    final = "/ds_input/2026-09-07/articles.jsonl"
+    staging = ex.staging_path(final)
+    assert staging.startswith(final + ".tmp.")
+    assert str(os.getpid()) in staging  # 두 프로세스가 같은 날짜를 내려도 섞이지 않는다
+    assert staging != final

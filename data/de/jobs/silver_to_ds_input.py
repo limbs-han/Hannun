@@ -4,7 +4,7 @@ DS 파이프라인(hannun-ingest)은 로컬 파일만 읽고 형식은 .json/.js
 받는다. silver 는 HDFS parquet 이라 그대로는 읽을 수 없어, 날짜별로 한 파일씩
 로컬에 풀어준다. DS 코드는 손대지 않는다.
 
-  <out>/dt=YYYY-MM-DD/articles.jsonl   (비압축, 한 줄에 기사 하나)
+  <out>/YYYY-MM-DD/articles.jsonl   (비압축, 한 줄에 기사 하나)
 
 파일명이 .jsonl 이어야 한다 — DS 의 reader 는 .json 을 한 덩어리 JSON 으로 읽어서
 확장자가 .json 이면 파싱이 깨진다. 그래서 Spark 쓰기 대신 드라이버에서 직접 쓴다.
@@ -67,18 +67,30 @@ def to_json_line(row):
     return json.dumps(record, ensure_ascii=False)
 
 
+def day_dir(out_root, day):
+    """DS 가 읽는 날짜 폴더. lake 와 달리 dt= 접두어를 붙이지 않는다 — DS 는 Spark 가
+    아니라 파일 경로로 읽어서 접두어가 아무 역할을 하지 않는다."""
+    return os.path.join(out_root, day)
+
+
+def staging_path(final):
+    """쓰는 중인 파일 경로. 프로세스마다 달라야 한다 — 같은 날짜를 두 프로세스가
+    동시에 내리면 고정 이름이면 서로의 내용이 섞인다."""
+    return f"{final}.tmp.{os.getpid()}"
+
+
 def export_day(spark, day, out_root):
-    """하루치를 <out_root>/dt=<day>/articles.jsonl 로 쓴다. 파티션이 없으면 None."""
+    """하루치를 <out_root>/<day>/articles.jsonl 로 쓴다. 파티션이 없으면 None."""
     try:
         rows = spark.read.parquet(f"{SILVER}/dt={day}")
     except AnalysisException:
         logger.info("silver 에 없는 날짜, 건너뜀: %s", day)
         return None
 
-    out_dir = os.path.join(out_root, f"dt={day}")
+    out_dir = day_dir(out_root, day)
     os.makedirs(out_dir, exist_ok=True)
     final = os.path.join(out_dir, "articles.jsonl")
-    staging = final + ".tmp"
+    staging = staging_path(final)
 
     count = 0
     # toLocalIterator: 하루치를 드라이버 메모리에 한꺼번에 올리지 않고 흘려 쓴다
@@ -87,7 +99,7 @@ def export_day(spark, day, out_root):
             out.write(to_json_line(row) + "\n")
             count += 1
     # 다 쓴 뒤 제자리로 옮긴다 — DS 가 쓰는 중인 파일을 읽는 일을 막는다
-    os.replace(staging, final)
+    os.replace(staging, final)  # 같은 파일시스템이라 원자적이다
     logger.info("내려주기 완료 %s: %s건 → %s", day, f"{count:,}", final)
     return count
 
