@@ -31,7 +31,9 @@ PARTITION = "/lake/bronze/news/ingest_date={day}"
 KEY = os.environ.get("B_SSH_KEY", "/opt/airflow/.ssh/b.pem")
 HOST = os.environ.get("B_HOST", "ubuntu@j15e105.p.ssafy.io")
 DEST = os.environ.get("B_BACKUP_DIR", "/home/ubuntu/backup/de")
-KEEP_DAYS = int(os.environ.get("BACKUP_KEEP_DAYS", "30"))
+# 하루치가 약 6MB 라 60일을 모아도 400MB 안쪽이다. B 서버 여유가 265GB 이므로 짧게
+# 잡을 이유가 없다. 이 기간이 지난 실시간 기사는 HDFS 에만 남는다
+KEEP_DAYS = int(os.environ.get("BACKUP_KEEP_DAYS", "60"))
 BWLIMIT = os.environ.get("BACKUP_BWLIMIT", "20000")  # KB/s, 서비스 트래픽과 겹치지 않게
 SEEN_DB = os.environ.get("SEEN_DB", "/opt/airflow/state/seen.sqlite")
 SSH = f"ssh -i {KEY} -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
