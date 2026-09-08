@@ -7,17 +7,19 @@
 
 | 데이터 | 유실되면 | 백업 |
 |---|---|---|
-| `bronze/news` 실시간 기사 | Kafka 보관 7일이 지나면 되받을 길 없음 | 매일 |
-| 수집기 `seen.sqlite` | 지난 기사를 다시 발행 | 매일 |
+| `bronze/news` 실시간 기사 | Kafka 보관 7일이 지나면 되받을 길 없음 | 매일, 60일 보관 |
+| 수집기 `seen.sqlite` | 지난 기사를 다시 발행 | 매일, 60일 보관 |
 | `bronze/bigkinds` 4.3GB | 빅카인즈 재다운로드 + 본문 재수집 3일 | 1회 수동 |
 | `backfill_jobs.sqlite` | 위와 같음 | 1회 수동 |
-| `bronze/news_dataset` 23GB | 로컬 PC 에 원본 CSV 있음, 재반입 1시간 | 안 함 |
+| `bronze/news_dataset` 23GB | 원본 CSV 재반입 1시간 | 1회 수동 |
 | `silver` 15GB | `bronze_to_silver.py --full` 로 재구축 3시간 20분 | 안 함 |
+| DS `gold` | 임베딩 재계산 필요 | 안 함 (2026-09-08 결정) |
 
 ## 매일 백업
 
 `nightly_maintenance` DAG 가 03:00 KST 에 어제 파티션을 합친 뒤 B 서버로 보낸다.
-목적지는 `ubuntu@j15e105.p.ssafy.io:/home/ubuntu/backup/de/<날짜>/`, 보관 30일.
+목적지는 `ubuntu@j15e105.p.ssafy.io:/home/ubuntu/backup/de/<날짜>/`, 보관 60일.
+이 기간이 지난 실시간 기사는 HDFS 에만 남는다.
 
 - 받는 쪽에서 sha256 을 대조하고, 어긋나면 태스크가 실패한다. 보낸 파일이 아니라 도착한
   파일이 온전한지가 중요하다
@@ -69,4 +71,8 @@ docker compose exec airflow spark-submit --master 'local[*]' \
 
 - `silver`: `bronze_to_silver.py --full`. 3시간 20분, DAG 를 멈추고 돌린다
 - `bronze/news_dataset`: 로컬 PC 의 `news_dataset/*.csv` 를 다시 올린다
-- `bronze/bigkinds`: 1회 수동 백업본이 B 에 있다. 없으면 빅카인즈 재다운로드부터다
+- `bronze/bigkinds`: 1회 수동 백업본이 B 의 `backup/de/once/` 에 있다
+- `bronze/news_dataset`: 같은 폴더의 `dataset_*.csv.gz` 를 받아 HDFS 에 되돌린다.
+  로컬 PC 원본에 의존하지 않으려고 1회 백업했다 (2026-09-08)
+- DS `gold`: 백업하지 않는다. DS 사슬을 같은 날짜 창으로 다시 돌리면 재생성되며,
+  임베딩 계산 시간이 든다
