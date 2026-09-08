@@ -24,6 +24,9 @@ Kafka 는 BE 소유(B 서버) — 여기서는 원격 브로커 주소만 참조
   대기줄이 없으면 해당 태스크가 실행되지 않으니, 메타DB 를 새로 만들면 다시 등록한다
 - DS 입력 폴더 `~/ds_input` 도 같은 이유로 소유자를 맞춘다. 호스트에서 읽을 수 있게 755 로 둔다:
   `mkdir -p ~/ds_input && sudo chown 50000:0 ~/ds_input && sudo chmod 755 ~/ds_input`
+- DS 입력 전체 내리기는 1회성이라 파이프라인을 멈추고 돌린다. 39GB·2~3시간 예상이며,
+  대기줄 자리가 하나라 켜둔 채로 돌리면 15분 배치가 그만큼 밀린다:
+  `docker compose exec airflow airflow dags pause bronze_ingest` → `spark-submit ... --bulk` → unpause
 
 ## EC2 부트스트랩 (도착 당일)
 

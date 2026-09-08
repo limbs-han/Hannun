@@ -41,7 +41,8 @@ published_at)은 더 이상 쓰지 않는다.
 
 DS 파이프라인은 로컬 파일만 읽으므로 DE 가 silver 를 JSONL 로 풀어 A 서버에 내려둔다.
 
-- 경로: `/home/ubuntu/ds_input/<YYYY-MM-DD>/articles.jsonl` (비압축, 한 줄에 기사 하나)
+- 경로: `/home/ubuntu/ds_input/<YYYY>/<YYYY-MM-DD>/articles.jsonl` (비압축, 한 줄에 기사 하나)
+- 하루가 여러 파일로 나뉘면 `articles-0.jsonl`, `articles-1.jsonl` 로 들어간다. 폴더 안 파일을 모두 읽으면 된다
 - 날짜는 발행 시각의 **한국 날짜**다. silver 의 dt 파티션과 같은 기준이며 파일 안 시각은 UTC 다
 - 필드는 위 표의 15개 그대로다. 파티션 컬럼 `dt` 는 넣지 않는다
 - 매일 04:00 KST 에 어제치가 올라가고, **최근 3일은 매일 다시 쓰인다**. 지난 날짜에도 기사가
