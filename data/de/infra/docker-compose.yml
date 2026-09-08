@@ -100,8 +100,9 @@ services:
       # 호스트 폴더 소유자가 uid 50000 이어야 컨테이너가 쓸 수 있다 (infra/README 참고)
       - ~/ds_input:/opt/airflow/ds_input
       # B 서버 백업 전송용 키(S15P21E105-74). 읽기 전용이고 커밋하지 않는다. 컨테이너가
-      # uid 50000 으로 돌아 호스트 파일 소유자도 50000 이어야 ssh 가 읽는다 (infra/README 참고)
-      - ~/secrets/b.pem:/opt/airflow/.ssh/b.pem:ro
+      # uid 50000 으로 돌아 호스트 파일 소유자도 50000 이어야 ssh 가 읽는다. 사람이 쓰는
+      # 키(~/.ssh/b.pem)와 소유자가 달라야 해서 이름을 나눈다 (infra/README 참고)
+      - ~/.ssh/b-airflow.pem:/opt/airflow/.ssh/b.pem:ro
       - airflow-logs:/opt/airflow/logs
     depends_on:
       - postgres
