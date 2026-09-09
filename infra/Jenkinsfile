@@ -25,8 +25,8 @@ pipeline {
         stage('Deploy Frontend') {
             when { anyOf { changeset "front/**"; triggeredBy 'UserIdCause' } }
             steps {
-                // TODO: 프론트팀 배포 스크립트로 교체 필요 (담당: 프론트팀)
-                echo 'front/ 변경 감지됨 - 배포 스크립트 아직 없음'
+                sh 'chmod +x front/deploy/deploy.sh'
+                sh 'cd front/deploy && ./deploy.sh'
             }
         }
     }
