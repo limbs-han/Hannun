@@ -658,10 +658,42 @@ header{
 .logo-tagline{color:#4f4b45}
 .searchbox form{
  height:40px;
+ align-items:center;
  border:1px solid #c8c3ba;
  border-radius:2px;
  background:#fff;
  box-shadow:none
+}
+.searchbox input{
+ flex:1 1 auto;
+ width:auto;
+ min-width:0;
+ height:100%;
+ padding-top:0;
+ padding-bottom:0;
+ line-height:40px;
+ transform:translateY(-1px)
+}
+.searchbox form button{
+ display:grid;
+ place-items:center;
+ flex:0 0 40px;
+ width:40px;
+ height:100%;
+ margin-left:auto;
+ padding:0;
+ font-size:0
+}
+.search-icon{
+ display:block;
+ width:20px;
+ height:20px;
+ overflow:visible;
+ stroke:#515968;
+ stroke-width:2;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+ transform:translateX(6px)
 }
 .searchbox form:focus-within{
  border-color:#59623b;
@@ -925,16 +957,43 @@ footer{border-top:1px solid #bdb8af;background:#e8e8e4}
   margin-left:auto;
   transform:none
  }
- .feed article::after{content:none}
- .feed article{padding-right:28px;padding-left:28px}
- .feed article>div:first-child{
-  transition:transform .32s cubic-bezier(.22,1,.36,1)
+ .feed article{
+  padding:0;
+  border-bottom:0;
+  background:transparent;
+  isolation:isolate
  }
- .feed article:hover>div:first-child,
- .feed article:focus-visible>div:first-child{
-  transform:translateX(-14px)
+ .feed article:hover,.feed article:focus-visible{background:transparent}
+ .feed article::before,.feed article::after{content:none}
+ .feed .feed-article-body{
+  position:relative;
+  width:100%;
+  box-sizing:border-box;
+  padding:25px 28px 24px;
+  border-bottom:1px solid #d8d4cc;
+  background:transparent;
+  transition:width .32s cubic-bezier(.22,1,.36,1),transform .32s cubic-bezier(.22,1,.36,1)
  }
- .feed article::before{left:0}
+ .feed .feed-article-body::before{
+  content:'';
+  position:absolute;
+  top:11px;
+  bottom:11px;
+  left:0;
+  width:3px;
+  background:#59623b;
+  opacity:0;
+  transition:opacity .18s
+ }
+ .feed article:hover>.feed-article-body,
+ .feed article:focus-visible>.feed-article-body{
+  width:calc(100% - 96px);
+  border-color:#bdb8af;
+  background:rgba(255,255,255,.5);
+  transform:translateX(-96px)
+ }
+ .feed article:hover>.feed-article-body::before,
+ .feed article:focus-visible>.feed-article-body::before{opacity:1}
  .feed article .feed-briefing-preview,
  .feed article:first-of-type .feed-briefing-preview,
  .feed article:nth-of-type(n+4) .feed-briefing-preview{
@@ -957,4 +1016,128 @@ footer{border-top:1px solid #bdb8af;background:#e8e8e4}
   transition-delay:0s
  }
  .feed-briefing-preview::before{display:none}
+}
+
+/* Keep stance labels readable when API ratios create very narrow segments. */
+.detail-stance.ratio-mode button.is-compact{
+ min-width:40px;
+ padding-right:3px;
+ padding-left:3px;
+ gap:0;
+ font-size:11px
+}
+.detail-stance.ratio-mode button.is-compact span{display:none}
+.detail-stance.ratio-mode button.is-tiny{
+ min-width:30px;
+ font-size:10px
+}
+.detail-stance.ratio-mode button.is-zero{
+ flex-grow:0!important;
+ flex-basis:0;
+ min-width:0;
+ padding-right:0;
+ padding-left:0;
+ border:0;
+ box-shadow:none
+}
+@media(max-width:680px){
+ .detail-stance.ratio-mode button.is-compact{min-width:34px;font-size:10px}
+ .detail-stance.ratio-mode button.is-tiny{min-width:27px;font-size:9px}
+ .detail-stance.ratio-mode button.is-zero{min-width:0}
+}
+
+/* Live related issues shown with the existing search API. */
+@media(min-width:681px){.searchbox{width:360px}}
+.related-search>div{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ padding:2px 4px 9px;
+ border-bottom:1px solid #d8d4cc
+}
+.related-search>div>b{font-size:13px;font-weight:500}
+.related-search>div>b>strong{font-weight:800}
+.related-search>div>time{color:#77736c;font-size:10px}
+.related-search>button{
+ display:grid;
+ grid-template-columns:auto minmax(0,1fr);
+ align-items:center;
+ gap:11px;
+ width:100%;
+ min-height:55px;
+ padding:9px 4px;
+ border:0;
+ border-bottom:1px solid #ebe8e1;
+ background:transparent;
+ text-align:left
+}
+.related-search>button:hover{background:#f8f7f3}
+.related-search>button>span{
+ padding:3px 5px;
+ border:1px solid #d8d4cc;
+ border-radius:2px;
+ background:#ebe9df;
+ color:#4d5631;
+ font-size:10px;
+ font-weight:700
+}
+.related-search>button>div{min-width:0}
+.related-search>button b{
+ display:block;
+ overflow:hidden;
+ color:#292824;
+ font:500 13px/1.45 'Noto Serif KR';
+ text-overflow:ellipsis;
+ white-space:nowrap
+}
+.related-search>button b strong{font-weight:800}
+.related-search>button small{display:block;margin-top:3px;color:#77736c;font-size:10px}
+.related-search>p{margin:0;padding:25px 4px;color:#77736c;font-size:12px;text-align:center}
+.recent-word{
+ display:inline-flex;
+ align-items:center;
+ height:30px;
+ margin:0;
+ overflow:hidden;
+ border:1px solid #d8d4cc;
+ border-radius:2px;
+ background:#f5f3ee;
+ vertical-align:middle
+}
+.recent-words{
+ display:flex;
+ align-items:center;
+ flex-wrap:wrap;
+ gap:8px;
+ padding-bottom:10px
+}
+.recent-words>b{
+ display:block;
+ margin-right:2px;
+ line-height:30px
+}
+.recent-words>p{margin:0;line-height:30px}
+.recent-words .recent-word>button{
+ display:flex;
+ align-items:center;
+ width:auto;
+ height:100%;
+ margin:0;
+ border:0;
+ border-radius:0;
+ background:transparent;
+ color:#4f4b45
+}
+.recent-words .recent-word-label{padding:0 4px 0 9px}
+.recent-words .recent-word-remove{
+ align-self:stretch;
+ padding:0 8px 1px 5px;
+ color:#8b877f;
+ font-size:15px;
+ line-height:1
+}
+.recent-words .recent-word-remove:hover{background:#e9e6de;color:#1c1b19}
+@media(max-width:680px){
+ .related-search>button{min-height:52px;gap:9px;padding:8px 3px}
+ .related-search>button b{font-size:12px}
 }
