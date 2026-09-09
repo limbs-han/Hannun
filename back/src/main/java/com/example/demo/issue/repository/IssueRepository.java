@@ -20,6 +20,7 @@ public interface IssueRepository extends JpaRepository<Issue, Long> {
 
     @Query(value = "select * from issue " +
             "where last_reported_at > :activeSince " +
+            "and article_count > 0 " +
             "and (:category is null or category = :category) " +
             "and (:cursorScore is null or score < :cursorScore or (score = :cursorScore and cluster_id < :cursorId)) " +
             "order by score desc, cluster_id desc " +
@@ -32,7 +33,8 @@ public interface IssueRepository extends JpaRepository<Issue, Long> {
                                   @Param("limit") int limit);
 
     @Query(value = "select * from issue " +
-            "where (:category is null or category = :category) " +
+            "where article_count > 0 " +
+            "and (:category is null or category = :category) " +
             "and (:cursorLastReportedAt is null or last_reported_at < :cursorLastReportedAt " +
             "     or (last_reported_at = :cursorLastReportedAt and cluster_id < :cursorId)) " +
             "order by last_reported_at desc, cluster_id desc " +
@@ -44,11 +46,14 @@ public interface IssueRepository extends JpaRepository<Issue, Long> {
                                 @Param("limit") int limit);
 
     // relevance는 SELECT 별칭이라 WHERE에서 못 씀 -> HAVING으로 커서 비교(MySQL은 HAVING에서 별칭 참조 허용).
+    // article_count는 WHERE에서 걸러도 되는 실제 컬럼(별칭 아님) - 재클러스터링으로 기사가 다 빠져나가
+    // 0건이 된 옛날 이슈가 검색 결과에 뜨는 것 방지.
     @Query(value = "select cluster_id as clusterId, category, fact_summary as factSummary, " +
             "article_count as articleCount, press_count as pressCount, " +
             "MATCH(fact_summary) AGAINST(:keyword IN NATURAL LANGUAGE MODE) as relevance " +
             "from issue " +
             "where MATCH(fact_summary) AGAINST(:keyword IN NATURAL LANGUAGE MODE) " +
+            "and article_count > 0 " +
             "and (:category is null or category = :category) " +
             "having (:cursorValue is null or relevance < :cursorValue " +
             "        or (relevance = :cursorValue and cluster_id < :cursorId)) " +

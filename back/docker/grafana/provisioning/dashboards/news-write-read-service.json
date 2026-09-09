@@ -115,10 +115,10 @@
       "linewidth": 2,
       "nullPointMode": "connected",
       "targets": [
-        { "expr": "hikaricp_connections_active{pool=\"HikariPool-1\"}", "legendFormat": "active - {{instance}}", "refId": "A" },
-        { "expr": "hikaricp_connections_idle{pool=\"HikariPool-1\"}", "legendFormat": "idle - {{instance}}", "refId": "B" },
-        { "expr": "hikaricp_connections_pending{pool=\"HikariPool-1\"}", "legendFormat": "pending(대기) - {{instance}}", "refId": "C" },
-        { "expr": "hikaricp_connections_max{pool=\"HikariPool-1\"}", "legendFormat": "max(설정값) - {{instance}}", "refId": "D" }
+        { "expr": "hikaricp_connections_active", "legendFormat": "active - {{pool}} - {{instance}}", "refId": "A" },
+        { "expr": "hikaricp_connections_idle", "legendFormat": "idle - {{pool}} - {{instance}}", "refId": "B" },
+        { "expr": "hikaricp_connections_pending", "legendFormat": "pending(대기) - {{pool}} - {{instance}}", "refId": "C" },
+        { "expr": "hikaricp_connections_max", "legendFormat": "max(설정값) - {{pool}} - {{instance}}", "refId": "D" }
       ],
       "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
       "xaxis": { "mode": "time", "show": true }
