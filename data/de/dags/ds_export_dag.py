@@ -8,7 +8,8 @@ silver 를 DS 가 읽는 로컬 JSONL 로 풀어준다. 03:00 새벽 정비가 �
 기사는 DS 에게 영구히 가지 않는다.
 
 DS 단계(hannun-ingest 이후)는 이 DAG 뒤에 붙일 자리다 — stance·enrichment 의 명령어와
-실행 환경 격리 방식이 정해지면 태스크로 이어 붙인다.
+실행 환경 격리 방식이 정해지면 태스크로 이어 붙인다. DS 사슬이 Airflow 아래로 들어오면
+gold_issue_feed 와 publish_clustering 도 그 뒤에 이어 붙인다(S15P21E105-69).
 """
 
 from datetime import datetime
