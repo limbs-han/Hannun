@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { api, type ApiStance, type ArticleItem, type FeedSort, type IssueDetailResponse, type IssueListItem } from './api'
+import { api, type ApiStance, type ArticleItem, type FeedSort, type IssueDetailResponse, type IssueListItem, type SearchIssueItem } from './api'
+import hannunLogo from './assets/hannun-logo-transparent.png'
 import summitNewsImage from './assets/summit-news.png'
 
-type Issue = { id: number; category: string; title: string; press: number; articles: number; summary: string; time: string; score?: number }
+type Issue = { id: number; category: string; title: string; press: number; articles: number; summary: string; time: string; score?: number; briefing?: string[] }
 type Stance = '긍정' | '중립' | '부정'
 type ViewArticle = { id?: number; source: string; headline: string; byline: string; time: string; link?: string; thumbnail?: string | null }
 type ViewGroup = { press: number; articles: number; summary: string; lead: ViewArticle; related: ViewArticle[] }
@@ -61,9 +62,20 @@ const searchOpen = ref(false)
 const searchBox = ref<HTMLElement | null>(null)
 const stance = ref<Stance | null>(null)
 const hasRevealedRatio = ref(false)
-const evidenceOpen = ref(false)
 const recent = ref<string[]>([])
-const popularKeywords = ref<string[]>(['한국', '재개발 규제 완화', 'AI 기본법'])
+const defaultPopularKeywords = [
+  '한국',
+  '재개발 규제 완화',
+  'AI 기본법',
+  '한·미 정상회담',
+  '기준금리 동결',
+  '수도권 집중호우',
+  '민생 법안',
+  '기후 대응',
+  '가계대출',
+  '국제 유가',
+]
+const popularKeywords = ref<string[]>([...defaultPopularKeywords])
 const detailData = ref<IssueDetailResponse | null>(null)
 const detailLoading = ref(false)
 const feedLoading = ref(false)
@@ -86,15 +98,14 @@ let sessionId = ''
 
 const feed = computed(() => issues.value)
 const currentGroup = computed(() => (stance.value ? articleGroups[stance.value] : null))
-const hasBriefingEvidence = computed(() => briefingFacts.value.some((fact) => fact.source && fact.url))
 const hasNextViewpointPage = computed(() => {
   const info = detailData.value?.viewpointGroupPage
   return Boolean(info && info.page + 1 < info.totalPages)
 })
 const currentStanceArticleCount = computed(() => viewpointCards.value.reduce((sum, card) => sum + card.articleCount, 0))
 
-function mapIssue(item: IssueListItem): Issue {
-  return { id: item.issueId, category: item.category, title: item.factSummary, press: item.pressCount, articles: item.articleCount, summary: item.factSummary, time: '최근 보도', score: item.score }
+function mapIssue(item: IssueListItem | SearchIssueItem): Issue {
+  return { id: item.issueId, category: item.category, title: item.factSummary, press: item.pressCount, articles: item.articleCount, summary: item.factSummary, time: '최근 보도', score: 'score' in item ? item.score : undefined, briefing: 'commonFactsBriefing' in item ? item.commonFactsBriefing : undefined }
 }
 
 function mapArticle(article: ArticleItem): ViewArticle {
@@ -162,7 +173,7 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
 })
 
 function applyNavigation(state: NavigationState) {
-  page.value = state.page; searchOpen.value = false; expandedCards.value = []; evidenceOpen.value = false
+  page.value = state.page; searchOpen.value = false; expandedCards.value = []
   if (state.page === 'detail') { selected.value = issues.value.find((issue) => issue.id === state.issueId) ?? selected.value; stance.value = '중립'; hasRevealedRatio.value = false }
   else { stance.value = null; hasRevealedRatio.value = false; detailData.value = null; if (state.page === 'search') { keyword.value = state.keyword ?? ''; query.value = keyword.value } }
   window.scrollTo(0, 0)
@@ -205,7 +216,7 @@ function stancePercent(value: Stance) {
 }
 
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
-function briefingPreview(issue: Issue) { return [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`] }
+function briefingPreview(issue: Issue) { return issue.briefing?.length ? issue.briefing : [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`] }
 
 async function loadGroupArticles(groupId: number) {
   const cursor = groupCursor.value[groupId]
@@ -240,7 +251,10 @@ function handleArticleClick(event: MouseEvent, card: ViewpointCard, article: Vie
 
 async function openSearch() {
   searchOpen.value = true; sendLog('OPEN_SEARCH', {})
-  try { popularKeywords.value = (await api.getSearchSuggestions()).popularKeywords } catch { /* 목업 유지 */ }
+  try {
+    const response = await api.getSearchSuggestions()
+    popularKeywords.value = [...new Set([...response.popularKeywords, ...defaultPopularKeywords])].slice(0, 10)
+  } catch { /* 목업 유지 */ }
 }
 
 function clickPopularKeyword(word: string) { sendLog('CLICK_POPULAR_KEYWORD', { keyword: word }); query.value = word; void search(word) }
@@ -302,7 +316,10 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', handlePopState); 
   <header>
     <div class="head wrap">
       <time>2026년 8월 27일 목요일</time>
-      <button class="logo" @click="home">한눈<small>뉴스를 한눈에, 관점을 한눈에</small></button>
+      <button class="logo" aria-label="한눈 홈으로 이동" @click="home">
+        <span class="logo-mark"><img :src="hannunLogo" alt="한눈"></span>
+        <span class="logo-tagline">사실 먼저, 관점은 원할 때</span>
+      </button>
       <div ref="searchBox" class="searchbox">
         <form @submit.prevent="search()"><input v-model="query" @focus="openSearch" placeholder="이슈, 키워드 검색" aria-label="이슈 검색"><button aria-label="검색">⌕</button></form>
         <div v-if="searchOpen" class="recent">
@@ -337,11 +354,7 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', handlePopState); 
 
       <section class="briefing">
         <div class="briefing-head"><div><label>COMMON FACTS</label><h2>공통사실 브리핑</h2></div><small>{{ briefingFacts.length }}개 핵심 사실</small></div>
-        <ol class="briefing-sentences"><li v-for="fact in briefingFacts" :key="fact.text"><span>{{ fact.text }}</span><a v-if="fact.source && fact.url" :href="fact.url" target="_blank" rel="noopener noreferrer" :aria-label="`${fact.source} 출처 기사 열기`">{{ fact.source }}</a></li></ol>
-        <template v-if="hasBriefingEvidence">
-          <button class="evidence-toggle" :aria-expanded="evidenceOpen" @click="evidenceOpen = !evidenceOpen">{{ evidenceOpen ? '근거 기사 접기 ↑' : `근거 기사 ${briefingFacts.length}건 보기 ↓` }}</button>
-          <div v-if="evidenceOpen" class="evidence-list"><a v-for="fact in briefingFacts" :key="fact.headline" :href="fact.url" target="_blank" rel="noopener noreferrer"><span>{{ fact.source }}</span><div><b>{{ fact.headline }}</b><small>{{ fact.time }} · 원문 기사</small></div><em>↗</em></a></div>
-        </template>
+        <ol class="briefing-sentences"><li v-for="fact in briefingFacts" :key="fact.text"><span class="briefing-text">{{ fact.text }}</span></li></ol>
       </section>
 
       <section class="view"><div class="stances"><div v-if="stance" class="group"><div class="opinion-stack">
