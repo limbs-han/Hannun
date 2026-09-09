@@ -63,6 +63,9 @@ const searchBox = ref<HTMLElement | null>(null)
 const stance = ref<Stance | null>(null)
 const hasRevealedRatio = ref(false)
 const recent = ref<string[]>([])
+const relatedSearchResults = ref<Issue[]>([])
+const relatedSearchLoading = ref(false)
+const relatedSearchTerm = ref('')
 const defaultPopularKeywords = [
   '한국',
   '재개발 규제 완화',
@@ -94,6 +97,8 @@ const feedSentinel = ref<HTMLElement | null>(null)
 const searchSentinel = ref<HTMLElement | null>(null)
 let feedObserver: IntersectionObserver | null = null
 let searchObserver: IntersectionObserver | null = null
+let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
+let relatedSearchRequestId = 0
 let sessionId = ''
 
 const feed = computed(() => issues.value)
@@ -215,6 +220,16 @@ function stancePercent(value: Stance) {
   return value === '긍정' ? 32 : value === '중립' ? 46 : 22
 }
 
+function stanceSegmentClass(value: Stance) {
+  const percent = stancePercent(value)
+  return {
+    active: stance.value === value,
+    'is-zero': percent === 0,
+    'is-compact': percent > 0 && percent <= 14,
+    'is-tiny': percent > 0 && percent <= 5,
+  }
+}
+
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
 function briefingPreview(issue: Issue) { return issue.briefing?.length ? issue.briefing : [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`] }
 
@@ -249,8 +264,74 @@ function handleArticleClick(event: MouseEvent, card: ViewpointCard, article: Vie
   sendLog('VIEW_ARTICLE', { issueId: selected.value.id, viewpointGroupId: card.groupId, articleId: article.id })
 }
 
+function clearRelatedSearch() {
+  if (relatedSearchTimer) clearTimeout(relatedSearchTimer)
+  relatedSearchTimer = null
+  relatedSearchRequestId += 1
+  relatedSearchLoading.value = false
+  relatedSearchResults.value = []
+  relatedSearchTerm.value = ''
+}
+
+function queueRelatedSearch(value = query.value) {
+  if (relatedSearchTimer) clearTimeout(relatedSearchTimer)
+  const term = value.trim()
+  const requestId = ++relatedSearchRequestId
+  relatedSearchTerm.value = term
+  relatedSearchResults.value = []
+  relatedSearchLoading.value = Boolean(term && searchOpen.value)
+  if (!term || !searchOpen.value) return
+
+  relatedSearchTimer = setTimeout(async () => {
+    try {
+      const response = await api.search({ keyword: term, category: category.value === '전체' ? undefined : category.value })
+      if (requestId !== relatedSearchRequestId || relatedSearchTerm.value !== term) return
+      relatedSearchResults.value = response.items.map(mapIssue).slice(0, 6)
+    } catch {
+      if (requestId !== relatedSearchRequestId || relatedSearchTerm.value !== term) return
+      relatedSearchResults.value = mockIssues.filter((issue) => `${issue.title} ${issue.summary} ${issue.category}`.includes(term)).slice(0, 6)
+    } finally {
+      if (requestId === relatedSearchRequestId) relatedSearchLoading.value = false
+    }
+  }, 120)
+}
+
+function startSearchComposition() {
+  if (relatedSearchTimer) clearTimeout(relatedSearchTimer)
+  relatedSearchTimer = null
+  relatedSearchRequestId += 1
+}
+
+function handleSearchInput(event: Event) {
+  queueRelatedSearch((event.target as HTMLInputElement).value)
+}
+
+function finishSearchComposition(event: CompositionEvent) {
+  const value = (event.target as HTMLInputElement).value
+  queueRelatedSearch(value)
+}
+
+function highlightedSearchText(text: string) {
+  const term = relatedSearchTerm.value
+  if (!term) return [{ text, matched: false }]
+  const source = text.toLocaleLowerCase()
+  const target = term.toLocaleLowerCase()
+  const parts: { text: string; matched: boolean }[] = []
+  let cursor = 0
+  let matchIndex = source.indexOf(target)
+  while (matchIndex >= 0) {
+    if (matchIndex > cursor) parts.push({ text: text.slice(cursor, matchIndex), matched: false })
+    parts.push({ text: text.slice(matchIndex, matchIndex + term.length), matched: true })
+    cursor = matchIndex + term.length
+    matchIndex = source.indexOf(target, cursor)
+  }
+  if (cursor < text.length) parts.push({ text: text.slice(cursor), matched: false })
+  return parts.length ? parts : [{ text, matched: false }]
+}
+
 async function openSearch() {
   searchOpen.value = true; sendLog('OPEN_SEARCH', {})
+  if (query.value.trim()) { queueRelatedSearch(); return }
   try {
     const response = await api.getSearchSuggestions()
     popularKeywords.value = [...new Set([...response.popularKeywords, ...defaultPopularKeywords])].slice(0, 10)
@@ -258,6 +339,11 @@ async function openSearch() {
 }
 
 function clickPopularKeyword(word: string) { sendLog('CLICK_POPULAR_KEYWORD', { keyword: word }); query.value = word; void search(word) }
+function openRelatedIssue(issue: Issue) { searchOpen.value = false; detail(issue, 'SEARCH') }
+function removeRecentKeyword(word: string) {
+  recent.value = recent.value.filter((item) => item !== word)
+  localStorage.setItem('hannun-recent', JSON.stringify(recent.value))
+}
 
 async function search(word = query.value) {
   const value = word.trim()
@@ -297,6 +383,7 @@ function handlePopState(event: PopStateEvent) {
 function handleDocumentClick(event: MouseEvent) { if (searchOpen.value && !searchBox.value?.contains(event.target as Node)) searchOpen.value = false }
 watch(feedSentinel, (element, previous) => { if (previous) feedObserver?.unobserve(previous); if (element) feedObserver?.observe(element) })
 watch(searchSentinel, (element, previous) => { if (previous) searchObserver?.unobserve(previous); if (element) searchObserver?.observe(element) })
+watch(searchOpen, (isOpen) => { if (!isOpen) clearRelatedSearch() })
 
 onMounted(() => {
   try { recent.value = JSON.parse(localStorage.getItem('hannun-recent') || '[]') } catch { recent.value = [] }
@@ -309,7 +396,7 @@ onMounted(() => {
   void loadFeed(true)
 })
 
-onBeforeUnmount(() => { window.removeEventListener('popstate', handlePopState); document.removeEventListener('click', handleDocumentClick); feedObserver?.disconnect(); searchObserver?.disconnect() })
+onBeforeUnmount(() => { clearRelatedSearch(); window.removeEventListener('popstate', handlePopState); document.removeEventListener('click', handleDocumentClick); feedObserver?.disconnect(); searchObserver?.disconnect() })
 </script>
 
 <template>
@@ -321,10 +408,17 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', handlePopState); 
         <span class="logo-tagline">사실 먼저, 관점은 원할 때</span>
       </button>
       <div ref="searchBox" class="searchbox">
-        <form @submit.prevent="search()"><input v-model="query" @focus="openSearch" placeholder="이슈, 키워드 검색" aria-label="이슈 검색"><button aria-label="검색">⌕</button></form>
+        <form @submit.prevent="search()"><input v-model="query" autocomplete="off" @focus="openSearch" @input="handleSearchInput" @compositionstart="startSearchComposition" @compositionend="finishSearchComposition" placeholder="이슈, 키워드 검색" aria-label="이슈 검색"><button aria-label="검색"><svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="6.5"/><path d="m14.8 14.8 5.2 5.2"/></svg></button></form>
         <div v-if="searchOpen" class="recent">
-          <section class="recent-words"><b>최근 검색어</b><p v-if="!recent.length">최근 검색어가 없습니다.</p><button v-for="word in recent" :key="word" @click="search(word)">{{ word }}</button></section>
-          <section class="search-trends"><div><b>인기 검색어</b><time>실시간</time></div><button v-for="(word, index) in popularKeywords" :key="word" @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button></section>
+          <section v-if="relatedSearchTerm" class="related-search">
+            <div><b><strong>{{ relatedSearchTerm }}</strong> 관련 이슈</b><time v-if="relatedSearchLoading">검색 중</time></div>
+            <button v-for="issue in relatedSearchResults" :key="issue.id" @click="openRelatedIssue(issue)"><span>{{ issue.category }}</span><div><b><template v-for="(part, index) in highlightedSearchText(issue.title)" :key="index"><strong v-if="part.matched">{{ part.text }}</strong><template v-else>{{ part.text }}</template></template></b><small>{{ issue.press }}개 언론사 · 관련 기사 {{ issue.articles }}건</small></div></button>
+            <p v-if="!relatedSearchLoading && !relatedSearchResults.length">연관된 이슈가 없습니다.</p>
+          </section>
+          <template v-else>
+            <section class="recent-words"><b>최근 검색어</b><p v-if="!recent.length">최근 검색어가 없습니다.</p><div v-for="word in recent" :key="word" class="recent-word"><button class="recent-word-label" @click="search(word)">{{ word }}</button><button class="recent-word-remove" :aria-label="`${word} 최근 검색어 삭제`" @click.stop="removeRecentKeyword(word)">×</button></div></section>
+            <section class="search-trends"><div><b>인기 검색어</b><time>실시간</time></div><button v-for="(word, index) in popularKeywords" :key="word" @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button></section>
+          </template>
         </div>
       </div>
     </div>
@@ -336,7 +430,7 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', handlePopState); 
       <div class="layout"><section class="feed">
         <div class="title"><div><button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button><button :class="{ active: sort === '최신순' }" @click="selectSort('최신순')">최신순</button></div><time>실시간 기준</time></div>
         <article v-for="issue in feed" :key="issue.id" tabindex="0" @click="detail(issue)" @keydown.enter="detail(issue)">
-          <div><div class="feed-kicker"><span>{{ issue.category }}</span><small>·　{{ issue.time }}</small></div><h3>{{ issue.title }}</h3><div class="feed-meta">{{ issue.press }}개 언론사　·　관련 기사 {{ issue.articles }}건 묶음</div></div>
+          <div class="feed-article-body"><div class="feed-kicker"><span>{{ issue.category }}</span><small>·　{{ issue.time }}</small></div><h3>{{ issue.title }}</h3><div class="feed-meta">{{ issue.press }}개 언론사　·　관련 기사 {{ issue.articles }}건 묶음</div></div>
           <div class="feed-briefing-preview"><strong>COMMON FACTS<br>공통사실 브리핑</strong><ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol></div>
         </article>
         <button v-if="feedHasNext" ref="feedSentinel" class="more" :disabled="feedLoading" @click="loadMoreFeed">{{ feedLoading ? '뉴스를 불러오는 중입니다　○' : '더 많은 뉴스 불러오기' }}</button>
@@ -348,7 +442,7 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', handlePopState); 
         <span>{{ selected.category }}</span><h1>{{ selected.title }}</h1>
         <p>최초 보도 {{ formatDate(detailData?.firstReportedAt) || '2026.08.27 08:30' }}　 최근 보도 {{ formatDate(detailData?.lastReportedAt) || '14:20' }}　 {{ selected.press }}개 언론사　 기사 {{ selected.articles }}건</p>
         <div class="stanceBtns detail-stance" :class="{ 'ratio-mode': hasRevealedRatio }" aria-label="관점 선택">
-          <button v-for="item in (['긍정', '중립', '부정'] as Stance[])" :key="item" :class="{ active: stance === item }" :style="{ '--ratio': stancePercent(item) }" @click="choose(item)"><span>{{ item }}</span><b>{{ stancePercent(item) }}%</b></button>
+          <button v-for="item in (['긍정', '중립', '부정'] as Stance[])" :key="item" :class="stanceSegmentClass(item)" :style="{ '--ratio': stancePercent(item) }" :aria-label="hasRevealedRatio ? `${item} ${stancePercent(item)}%` : item" @click="choose(item)"><span v-if="!hasRevealedRatio || stancePercent(item) > 0">{{ item }}</span><b v-if="stancePercent(item) > 0">{{ stancePercent(item) }}%</b></button>
         </div>
       </section>
 
