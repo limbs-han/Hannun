@@ -54,6 +54,18 @@ def mock_groups(cluster_id, member_count):
     return [(f"[샘플] A-{i + 1} {name}", stance) for i, (name, stance) in enumerate(picked)]
 
 
+def missing_required(message):
+    """BE 필수 필드 중 빈 것을 돌려준다. 목업 없이 보낼 수 있는지 미리 보는 데 쓴다."""
+    missing = [k for k in ("clusterId", "category", "factSummary",
+                           "commonFactsBriefing", "clusteredAt")
+               if message.get(k) in (None, "")]
+    for article in message["articles"]:
+        for key in ("link", "viewpointGroupLabel", "stance"):
+            if article.get(key) in (None, "") and f"articles[].{key}" not in missing:
+                missing.append(f"articles[].{key}")
+    return missing
+
+
 def build_message(rows, mock=False):
     """한 이슈의 행들을 BE 스펙 메시지로 조립한다. rows 는 같은 cluster_id 의 행들."""
     rows = sorted(rows, key=lambda r: r["published_at"])
@@ -193,6 +205,11 @@ if __name__ == "__main__":
     messages.sort(key=lambda m: m["clusterId"])
     logger.info("%s: 이슈 %s개, 기사 %s건%s", args.day, f"{len(messages):,}", f"{len(rows):,}",
                 ", 목업 채움" if args.mock_viewpoints else "")
+
+    incomplete = [m for m in messages if missing_required(m)]
+    if incomplete:
+        logger.warning("필수 필드가 빈 이슈 %s개. 첫 이슈에서 빈 필드: %s",
+                       f"{len(incomplete):,}", missing_required(incomplete[0]))
 
     if args.dry_run:
         for message in messages[:2]:

@@ -99,6 +99,8 @@ services:
       # DS 분석 산출물. gold 이슈 피드 잡이 읽는다(S15P21E105-69). DS 코드가 HDFS 를
       # 쓰지 못해 로컬에 두고 읽기 전용으로 붙인다
       - ~/gold:/opt/airflow/ds_gold:ro
+      # DS2 분석 결과(관점 라벨·성향·요약). gold 잡이 붙인다(S15P21E105-69)
+      - ~/ds_output:/opt/airflow/ds_output:ro
       # DS 입력 내려주는 폴더. DS 파이프라인이 로컬 파일만 읽어서 호스트와 공유한다.
       # 호스트 폴더 소유자가 uid 50000 이어야 컨테이너가 쓸 수 있다 (infra/README 참고)
       - ~/ds_input:/opt/airflow/ds_input
