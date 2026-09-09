@@ -16,7 +16,10 @@ echo "==> Node 컨테이너에서 빌드"
 docker run --rm -v "$FRONT_DIR":/app -w /app node:20-alpine sh -c "npm ci && npm run build"
 
 echo "==> 빌드 산출물(dist/)을 서빙 경로로 교체"
-sudo mkdir -p "$SERVE_DIR"
-sudo rsync -a --delete "$FRONT_DIR/dist/" "$SERVE_DIR/"
+# /var/www/news-front는 jenkins 유저 소유로 미리 chown 해둠(최초 1회, 수동) - sudo 없이 씀.
+# jenkins의 NOPASSWD sudo 허용 범위가 nginx reload 등 특정 명령어 몇 개로 좁게 스코프돼있어서
+# (/etc/sudoers.d/jenkins-deploy), 여기 mkdir/rsync까지 sudo로 넓히는 것보다 안전함.
+mkdir -p "$SERVE_DIR"
+rsync -a --delete "$FRONT_DIR/dist/" "$SERVE_DIR/"
 
 echo "==> 배포 완료"
