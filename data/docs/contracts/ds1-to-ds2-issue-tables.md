@@ -61,10 +61,15 @@ per_issue = members.merge(gold, on="article_id").groupby("issue_local")
 4. 노이즈(-1)·정형(structured) 처리 정책은 소비 쪽 선택이지만, 관점 분석은 둘 다
    제외를 권장 (근거: 티켓 93·104 실측)
 
-## 5. 역방향 (DS2 → 서비스/DS1) — 제안
-
-DS2 산출(관점·키워드)은 아래 키로 붙이는 것을 제안한다. 합의 후 이 절을 확정한다.
+## 5. 역방향 (DS2 → 서비스/DS1) — 확정
 
 - 기사 단위 산출(관점 라벨): `article_id` 키 — 어떤 창과도 무관하게 유효
-- 이슈 단위 산출(키워드·관점 분포): `(window_start, issue_local)` 또는 `issue_id` 키.
-  서비스 노출용이면 **issue_id 권장** (창을 넘어 유지)
+- 이슈 단위 산출(키워드·관점 분포): `issue_id` 키 — 창을 넘어 유지
+
+## 6. 연동 합의 (2026-09-09, DS1·DS2)
+
+1. **테이블→JSON 변환은 DS2 몫** — DS2 가 parquet 테이블을 읽어 enrichment 입력
+   형태로 변환한다. 기존 코드 호환을 위해 `issue_cluster_id = str(issue_id)`.
+2. **`keywords` 는 당분간 optional(빈 배열 허용)** — DS1 이슈 키워드(티켓 31) 생성
+   전이므로. 생성이 붙으면 연결한다.
+3. 역방향 키는 §5 대로 확정.
