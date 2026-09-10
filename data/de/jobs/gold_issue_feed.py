@@ -22,6 +22,8 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
+import metrics
+
 logger = logging.getLogger("gold_issue_feed")
 
 LAKE = os.environ.get("LAKE_ROOT", "hdfs://namenode:8020/lake")
@@ -150,13 +152,21 @@ def build_with_ds2(spark, day, window=None):
     return merge_ds2(build(spark, day, window), read_ds2(spark))
 
 
-def write(df, day):
+def write(df, day, window=None):
     (df.repartition(1)  # 하루 분량이 1MB 남짓이라 파일 하나로 충분하다
        .write.mode("overwrite")
        .option("partitionOverwriteMode", "dynamic")
        .partitionBy("dt").parquet(GOLD))
-    logger.info("gold 이슈 피드 %s: 이슈 %s개, 기사 %s건",
-                day, f"{df.select('cluster_id').distinct().count():,}", f"{df.count():,}")
+    issues, rows = df.select("cluster_id").distinct().count(), df.count()
+    logger.info("gold 이슈 피드 %s: 이슈 %s개, 기사 %s건", day, f"{issues:,}", f"{rows:,}")
+    # 관점 값이 붙은 기사 수. rows 로 나누면 DS2 연결 비율이 된다. 창이 어긋나면
+    # 이 값이 0 에 가까워진다 (S15P21E105-79)
+    metrics.push("gold_issue_feed", lambda: [
+        metrics.line("gold_issues", issues),
+        metrics.line("gold_articles", rows),
+        metrics.line("gold_ds2_matched_rows", df.where(F.col("stance").isNotNull()).count()),
+        metrics.line("gold_window", 1, {"window": window or ""}),
+    ])
 
 
 if __name__ == "__main__":
@@ -171,6 +181,7 @@ if __name__ == "__main__":
              .config("spark.locality.wait", "0")  # bronze_to_silver 와 같은 이유
              .getOrCreate())
     try:
-        write(build_with_ds2(spark, day, args.window), day)
+        window = args.window or latest_window(spark)
+        write(build_with_ds2(spark, day, window), day, window)
     finally:
         spark.stop()
