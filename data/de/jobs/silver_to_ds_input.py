@@ -32,6 +32,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.utils import AnalysisException
 
+import metrics
+
 logger = logging.getLogger("silver_to_ds_input")
 
 LAKE = os.environ.get("LAKE_ROOT", "hdfs://namenode:8020/lake")
@@ -228,6 +230,9 @@ if __name__ == "__main__":
                 export_bulk(spark, OUT_ROOT, days=stale)
             else:
                 logger.info("뒤처진 날짜 없음")
+            # 0 이어야 정상이다. 쌓이면 내려주기가 silver 를 못 따라가고 있다는 뜻
+            metrics.push("silver_to_ds_input",
+                         [metrics.line("ds_input_stale_days", len(stale))])
         elif args.bulk:
             start, end = (args.dates + [None, None])[:2]
             export_bulk(spark, OUT_ROOT, start=start, end=end)

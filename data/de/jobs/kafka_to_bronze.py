@@ -14,6 +14,8 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, current_date
 
+import metrics
+
 HDFS = "hdfs://namenode:8020"
 TOPIC = "news.article.raw"
 
@@ -44,4 +46,9 @@ query = (
     .start()
 )
 query.awaitTermination()
+
+# 이번 실행에 넣은 건수. availableNow 가 여러 마이크로배치로 나뉘면 합산한다
+metrics.push("kafka_to_bronze", lambda: [
+    metrics.line("bronze_ingested_rows", sum(p["numInputRows"] for p in query.recentProgress)),
+])
 spark.stop()

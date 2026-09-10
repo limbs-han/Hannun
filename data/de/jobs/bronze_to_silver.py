@@ -29,6 +29,8 @@ from jobs.silver_transform import (  # noqa: E402
     FIELDS, NULLABLE, UnknownPublisher, from_bigkinds_line, from_dataset_row, from_realtime_message,
 )
 
+import metrics  # noqa: E402
+
 logger = logging.getLogger("bronze_to_silver")
 
 LAKE = os.environ.get("LAKE_ROOT", "hdfs://namenode:8020/lake")
@@ -119,6 +121,27 @@ def run_full(spark):
     logger.info("미등록 언론사 제외: %s", unknown.value)
 
 
+def _incremental_lines(spark, dts, dropped, unknown):
+    """15분 배치 지표 (S15P21E105-79).
+
+    적재 지연은 갱신한 파티션의 가장 늦은 발행 시각과 지금의 차다. crawled_at 으로는
+    못 잰다 — 실시간분의 crawled_at 은 적재일 자정으로 근사한 값이다.
+    """
+    lines = [
+        metrics.line("silver_partitions_updated", len(dts)),
+        metrics.line("silver_dropped_rows", dropped.value),
+    ]
+    lines += [metrics.line("silver_unknown_publisher_rows", count, {"publisher": name})
+              for name, count in unknown.value.items()]
+    newest = (spark.read.parquet(SILVER).where(col("dt").isin(dts))
+              .agg({"published": "max"}).collect()[0][0])
+    if newest:
+        seen = dt.datetime.strptime(newest, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+        lines.append(metrics.line(
+            "ingest_lag_seconds", int((dt.datetime.now(dt.timezone.utc) - seen).total_seconds())))
+    return lines
+
+
 def run_incremental(spark, ingest_dates):
     dropped = spark.sparkContext.accumulator(0)
     unknown = spark.sparkContext.accumulator({}, _CountByKey())
@@ -126,6 +149,7 @@ def run_incremental(spark, ingest_dates):
     dts = [r["dt"] for r in new.select("dt").distinct().collect()]
     if not dts:
         logger.info("적재일 %s 에 신규 기사 없음", ingest_dates)
+        metrics.push("bronze_to_silver", [metrics.line("silver_partitions_updated", 0)])
         return
     try:
         # 덮어쓸 파티션의 기존 행을 메모리에 먼저 고정한다. 읽는 경로에 쓰기를 막는 Spark
@@ -136,6 +160,7 @@ def run_incremental(spark, ingest_dates):
     spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
     write(dedup(new.union(existing)))
     logger.info("dt %s 갱신, 실시간 제외 %d건, 미등록 언론사 제외: %s", sorted(dts), dropped.value, unknown.value)
+    metrics.push("bronze_to_silver", lambda: _incremental_lines(spark, dts, dropped, unknown))
 
 
 if __name__ == "__main__":

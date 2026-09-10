@@ -1,0 +1,224 @@
+{
+  "uid": "de-pipeline",
+  "title": "DE 파이프라인",
+  "tags": [
+    "de",
+    "pipeline"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "적재 지연",
+      "description": "레이크에 들어온 가장 최근 기사가 몇 초 전에 발행된 것인지. 전 구간 신선도 목표(S15P21E105-73)를 이 값으로 판정한다. 15분마다 갱신된다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_ingest_lag_seconds",
+          "legendFormat": "지연",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "15분 적재량",
+      "description": "Kafka 에서 bronze 로 들어온 건수. 값이 0 으로 이어지면 크롤러나 Kafka 쪽을 본다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_bronze_ingested_rows",
+          "legendFormat": "건수",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "silver 손실",
+      "description": "정형화에서 빠진 건수. 본문이 없거나 형식이 맞지 않는 것과, publishers.py 에 없는 언론사를 나눠 쌓는다. 미등록 언론사가 늘면 매핑을 추가해야 한다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_silver_dropped_rows",
+          "legendFormat": "본문 없음·형식 불량",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(pipeline_silver_unknown_publisher_rows)",
+          "legendFormat": "미등록 언론사",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DS2 연결 비율",
+      "description": "관점 값이 붙은 기사의 몫. DS2 가 본 창과 gold 가 쓴 창이 어긋나면 0 에 가까워진다. 2026-09-10 에 창이 섞여 48% 까지 떨어진 일이 있다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_ds2_matched_rows / pipeline_gold_articles",
+          "legendFormat": "붙은 비율",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "gold 규모",
+      "description": "BE 로 발행할 이슈와 기사 수.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_issues",
+          "legendFormat": "이슈",
+          "refId": "A"
+        },
+        {
+          "expr": "pipeline_gold_articles",
+          "legendFormat": "기사",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "뒤처진 날짜",
+      "description": "silver 가 갱신됐는데 ds_input 파일이 따라가지 못한 날짜 수. 0 이어야 정상이다.",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_ds_input_stale_days",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "지금 쓰는 DS 창",
+      "description": "gold 가 마지막으로 읽은 DS 산출물 창. DS2 결과 파일 이름과 같아야 관점 값이 붙는다.",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_window",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "name"
+      }
+    }
+  ]
+}
