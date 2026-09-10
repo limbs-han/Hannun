@@ -94,6 +94,9 @@ services:
       - "127.0.0.1:${AIRFLOW_UI_PORT:-8080}:8080"
     volumes:
       - ../dags:/opt/airflow/dags
+      # DS 소유 DAG(ds_chain). DS 가 자기 폴더에서 고치고 DE 는 부르기만 한다.
+      # Airflow 는 dags 아래를 재귀로 읽어 하위 폴더도 찾는다 (S15P21E105-69)
+      - ../../ds/dags:/opt/airflow/dags/ds
       - ../jobs:/opt/airflow/jobs
       - ../crawler:/opt/airflow/crawler
       # silver 잡이 데이터셋 정제 규칙(backfill.dataset_sender)을 재사용한다
