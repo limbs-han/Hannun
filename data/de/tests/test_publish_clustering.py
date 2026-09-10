@@ -85,3 +85,14 @@ def test_publish_raises_when_delivery_fails():
     producer = FakeProducer(fail=True)
     with pytest.raises(RuntimeError):
         pc.publish([pc.build_message([_row(7, "https://a/1", 0)])], producer=producer, rate=0)
+
+
+def test_missing_required_lists_empty_be_fields():
+    # 목업 없이 보낼 수 있는지 미리 알려준다. BE 는 여덟 필드를 전부 필수로 요구한다
+    msg = pc.build_message([_row(7, "https://a/1", 0)])
+    assert pc.missing_required(msg) == ["articles[].viewpointGroupLabel", "articles[].stance"]
+
+
+def test_missing_required_empty_when_ds2_filled_everything():
+    rows = [_row(7, "https://a/1", 0, label="A-1 경제적 기대 효과", stance="positive")]
+    assert pc.missing_required(pc.build_message(rows)) == []
