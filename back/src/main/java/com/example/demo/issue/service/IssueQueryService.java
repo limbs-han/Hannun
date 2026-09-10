@@ -69,6 +69,36 @@ public class IssueQueryService {
         return new IssueFeedResponse(items, strategy.extractCursorValue(last), last.getClusterId(), true);
     }
 
+    // 날짜 범위 검색 전용 - 기존 getFeed의 IssueFeedStrategy(trending/latest)는 date range 인자가 없어서
+    // 억지로 끼워맞추기보다 여기서 직접 분기. sort는 이 기간 안에서의 정렬 기준일 뿐(최신순 강제 아님).
+    @Cacheable(cacheNames = ISSUE_FEED_CACHE,
+            key = "'dateRange:' + #category + ':' + #sort + ':' + #from + ':' + #to + ':' + (#cursorValue ?: '0') + ':' + (#cursorId ?: '0')")
+    public IssueFeedResponse getFeedByDateRange(String category, String sort, OffsetDateTime from, OffsetDateTime to,
+                                                 String cursorValue, Long cursorId, int size) {
+        String categoryFilter = "ALL".equals(category) ? null : category;
+        boolean trending = "trending".equals(sort);
+
+        List<Issue> rows;
+        if (trending) {
+            Long cursorScore = cursorValue == null ? null : Long.valueOf(cursorValue);
+            rows = issueRepository.findByDateRangeTrending(from, to, categoryFilter, cursorScore, cursorId, size + 1);
+        } else {
+            OffsetDateTime cursorLastReportedAt = cursorValue == null ? null : OffsetDateTime.parse(cursorValue);
+            rows = issueRepository.findByDateRangeLatest(from, to, categoryFilter, cursorLastReportedAt, cursorId, size + 1);
+        }
+
+        CursorPage<Issue> cursorPage = CursorPage.of(rows, size);
+        List<IssueSummary> items = cursorPage.items().stream().map(this::toSummary).toList();
+
+        if (!cursorPage.hasNext()) {
+            return new IssueFeedResponse(items, null, null, false);
+        }
+
+        Issue last = cursorPage.last();
+        Object nextCursorValue = trending ? last.getScore() : last.getLastReportedAt();
+        return new IssueFeedResponse(items, nextCursorValue, last.getClusterId(), true);
+    }
+
     @Cacheable(cacheNames = ISSUE_DETAIL_CACHE, key = "#issueId + ':' + #stance + ':' + #page")
     public IssueDetailResponse getDetail(Long issueId, String stance, int page, int size) {
         stanceResolver.validate(stance);

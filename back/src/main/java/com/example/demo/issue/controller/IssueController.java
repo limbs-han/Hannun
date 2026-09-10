@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @RestController
 @RequestMapping("/api/issues")
@@ -22,6 +24,7 @@ import java.time.OffsetDateTime;
 public class IssueController {
 
     private static final int DEFAULT_SIZE = 10;
+    private static final ZoneOffset KST = ZoneOffset.of("+09:00");
 
     private final IssueQueryService issueQueryService;
 
@@ -33,6 +36,22 @@ public class IssueController {
             @RequestParam(required = false) Long cursorId
     ) {
         return issueQueryService.getFeed(category, sort, cursorValue, cursorId, DEFAULT_SIZE);
+    }
+
+    // 날짜 범위 검색. from/to는 달력에서 고르는 날짜(연-월-일)만 받고, 하루 전체(00:00:00~23:59:59.999)로
+    // 변환해서 그 날짜에 걸쳐있던 이슈를 다 포함시킴. sort는 이 기간 안에서의 정렬 기준(latest/trending).
+    @GetMapping("/date-range")
+    public IssueFeedResponse getFeedByDateRange(
+            @RequestParam String category,
+            @RequestParam(defaultValue = "trending") String sort,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @RequestParam(required = false) String cursorValue,
+            @RequestParam(required = false) Long cursorId
+    ) {
+        OffsetDateTime fromInclusive = from.atStartOfDay(KST).toOffsetDateTime();
+        OffsetDateTime toInclusive = to.plusDays(1).atStartOfDay(KST).toOffsetDateTime().minusNanos(1);
+        return issueQueryService.getFeedByDateRange(category, sort, fromInclusive, toInclusive, cursorValue, cursorId, DEFAULT_SIZE);
     }
 
     @GetMapping("/{issueId}")
