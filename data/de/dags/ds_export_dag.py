@@ -9,7 +9,8 @@ silver 를 DS 가 읽는 로컬 JSONL 로 풀어준다. 03:00 새벽 정비가 �
 
 DS 일일 체인(S15P21E105-101)이 뒤에 붙어 있다 — 실행 환경이 도커 이미지(hannun-ds)로
 확정돼 내려주기 완료 직후 이어 돌린다. 04:30 고정(cron)보다 안전한 이유: 내려주기가
-늦어져도 옛 입력을 읽는 일이 없다.
+늦어져도 옛 입력을 읽는 일이 없다. gold_issue_feed 와 publish_clustering 은 이 체인
+뒤에 이어 붙일 자리다(S15P21E105-69).
 """
 
 from datetime import datetime, timedelta
