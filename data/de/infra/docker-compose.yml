@@ -84,6 +84,10 @@ services:
     # Spark driver 가 이 컨테이너 안에서 돈다. silver 전체 재구축(CSV 23GB) 기준으로
     # 6g, 서버 RAM 15Gi 중 HDFS·postgres 몫을 남긴 값
     mem_limit: 6g
+    # DS 일일 체인(ds_export DAG 의 hannun_daily_chain)이 호스트로 ssh 해
+    # hannun-ds 컨테이너를 돌린다 (S15P21E105-101)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # HDFS UI 와 같은 이유로 서버 내부 전용. 화면에서 DAG 를 돌릴 수 있어 사실상 실행 권한이고,
       # DS 실행 환경이 도커를 부르게 되면 그 권한이 서버 관리자 권한까지 닿는다. 접속은 SSH 터널로
@@ -108,6 +112,9 @@ services:
       # uid 50000 으로 돌아 호스트 파일 소유자도 50000 이어야 ssh 가 읽는다. 사람이 쓰는
       # 키(~/.ssh/b.pem)와 소유자가 달라야 해서 이름을 나눈다 (infra/README 참고)
       - ~/.ssh/b-airflow.pem:/opt/airflow/.ssh/b.pem:ro
+      # DS 체인 실행용 호스트 ssh 키 — b-airflow.pem 과 같은 규칙(uid 50000 소유,
+      # 커밋 금지). 만들기는 ds/docs/ds1/EC2_RUNBOOK.md §7
+      - ~/.ssh/hannun-airflow.pem:/opt/airflow/.ssh/hannun.pem:ro
       - airflow-logs:/opt/airflow/logs
     depends_on:
       - postgres
