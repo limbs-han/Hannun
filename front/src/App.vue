@@ -12,6 +12,7 @@ type BriefingFact = { text: string; source?: string; url?: string; headline?: st
 type PageName = 'home' | 'detail' | 'search'
 type NavigationState = { __hannun: true; page: PageName; issueId?: number; keyword?: string }
 type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; articles: ViewArticle[] }
+type CalendarDay = { key: string; date: string; label: number | null; selected: boolean; inRange: boolean; isStart: boolean; isEnd: boolean }
 
 const mockIssues: Issue[] = [
   { id: 1, category: '정치', title: '한·미 정상회담, 안보·경제 협력 확대에 공감', press: 25, articles: 322, summary: '정상회담에서 양국은 안보 협력과 경제 현안에 대한 공조 확대 방안을 논의했습니다.', time: '1시간 전' },
@@ -85,8 +86,17 @@ const feedLoading = ref(false)
 const feedHasNext = ref(false)
 const feedCursorValue = ref<number | string | null>(null)
 const feedCursorId = ref<number | null>(null)
+const dateFromInput = ref('')
+const dateToInput = ref('')
+const appliedDateFrom = ref('')
+const appliedDateTo = ref('')
+const dateRangeError = ref('')
+const datePickerOpen = ref(false)
+const calendarViewDate = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
 const results = ref<Issue[]>([])
 const searchLoading = ref(false)
+const searchTopIssues = ref<Issue[]>([])
+const searchTopLoading = ref(false)
 const searchHasNext = ref(false)
 const searchCursorValue = ref<number | null>(null)
 const searchCursorId = ref<number | null>(null)
@@ -102,6 +112,28 @@ let relatedSearchRequestId = 0
 let sessionId = ''
 
 const feed = computed(() => issues.value)
+const dateRangeActive = computed(() => Boolean(appliedDateFrom.value && appliedDateTo.value))
+const dateRangeLabel = computed(() => {
+  if (dateFromInput.value && dateToInput.value) return `${dateFromInput.value} – ${dateToInput.value}`
+  if (dateFromInput.value) return `${dateFromInput.value} – 종료일 선택`
+  return '기간 선택'
+})
+const calendarTitle = computed(() => `${calendarViewDate.value.getFullYear()}년 ${calendarViewDate.value.getMonth() + 1}월`)
+const calendarDays = computed<CalendarDay[]>(() => {
+  const year = calendarViewDate.value.getFullYear()
+  const month = calendarViewDate.value.getMonth()
+  const firstWeekday = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7
+  return Array.from({ length: cellCount }, (_, index) => {
+    const day = index - firstWeekday + 1
+    if (day < 1 || day > daysInMonth) return { key: `blank-${index}`, date: '', label: null, selected: false, inRange: false, isStart: false, isEnd: false }
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const isStart = date === dateFromInput.value
+    const isEnd = date === dateToInput.value
+    return { key: date, date, label: day, selected: isStart || isEnd, inRange: Boolean(dateToInput.value && date > dateFromInput.value && date < dateToInput.value), isStart, isEnd }
+  })
+})
 const currentGroup = computed(() => (stance.value ? articleGroups[stance.value] : null))
 const hasNextViewpointPage = computed(() => {
   const info = detailData.value?.viewpointGroupPage
@@ -134,7 +166,11 @@ async function loadFeed(reset = false) {
   feedLoading.value = true
   if (reset) { feedCursorValue.value = null; feedCursorId.value = null }
   try {
-    const response = await api.getIssues({ category: category.value === '전체' ? 'ALL' : category.value, sort: (sort.value === '최신순' ? 'latest' : 'trending') satisfies FeedSort, cursorValue: reset ? null : feedCursorValue.value, cursorId: reset ? null : feedCursorId.value })
+    const apiSort: FeedSort = sort.value === '최신순' ? 'latest' : 'trending'
+    const params = { category: category.value === '전체' ? 'ALL' : category.value, sort: apiSort, cursorValue: reset ? null : feedCursorValue.value, cursorId: reset ? null : feedCursorId.value }
+    const response = dateRangeActive.value
+      ? await api.getIssuesByDateRange({ ...params, from: appliedDateFrom.value, to: appliedDateTo.value })
+      : await api.getIssues(params)
     const mapped = response.items.map(mapIssue)
     issues.value = reset ? mapped : [...issues.value, ...mapped.filter((item) => !issues.value.some((existing) => existing.id === item.id))]
     feedCursorValue.value = response.nextCursorValue
@@ -144,6 +180,53 @@ async function loadFeed(reset = false) {
     if (reset) issues.value = fallbackFeed()
     feedHasNext.value = false
   } finally { feedLoading.value = false }
+}
+
+async function applyDateRange() {
+  if (!dateFromInput.value || !dateToInput.value) { dateRangeError.value = '시작일과 종료일을 모두 선택해주세요.'; return }
+  if (dateFromInput.value > dateToInput.value) { dateRangeError.value = '시작일은 종료일보다 늦을 수 없습니다.'; return }
+  dateRangeError.value = ''
+  appliedDateFrom.value = dateFromInput.value
+  appliedDateTo.value = dateToInput.value
+  await loadFeed(true)
+  datePickerOpen.value = false
+}
+
+async function clearDateRange() {
+  dateFromInput.value = ''
+  dateToInput.value = ''
+  appliedDateFrom.value = ''
+  appliedDateTo.value = ''
+  dateRangeError.value = ''
+  datePickerOpen.value = false
+  await loadFeed(true)
+}
+
+function toggleDatePicker() {
+  datePickerOpen.value = !datePickerOpen.value
+  if (datePickerOpen.value && dateFromInput.value) {
+    const [year, month] = dateFromInput.value.split('-').map(Number)
+    calendarViewDate.value = new Date(year, month - 1, 1)
+  }
+}
+
+function changeCalendarMonth(offset: number) {
+  calendarViewDate.value = new Date(calendarViewDate.value.getFullYear(), calendarViewDate.value.getMonth() + offset, 1)
+}
+
+function selectCalendarDate(value: string) {
+  dateRangeError.value = ''
+  if (!dateFromInput.value || dateToInput.value) {
+    dateFromInput.value = value
+    dateToInput.value = ''
+    return
+  }
+  if (value < dateFromInput.value) {
+    dateToInput.value = dateFromInput.value
+    dateFromInput.value = value
+    return
+  }
+  dateToInput.value = value
 }
 
 function loadMoreFeed() {
@@ -357,16 +440,23 @@ async function search(word = query.value) {
 async function loadSearch(reset = false) {
   if (searchLoading.value || (!reset && !searchHasNext.value)) return
   searchLoading.value = true
-  if (reset) { searchCursorValue.value = null; searchCursorId.value = null }
+  if (reset) { searchCursorValue.value = null; searchCursorId.value = null; searchTopIssues.value = []; searchTopLoading.value = true }
   try {
     const response = await api.search({ keyword: keyword.value, category: category.value === '전체' ? undefined : category.value, cursorValue: reset ? null : searchCursorValue.value, cursorId: reset ? null : searchCursorId.value })
     const mapped = response.items.map(mapIssue)
     results.value = reset ? mapped : [...results.value, ...mapped.filter((item) => !results.value.some((existing) => existing.id === item.id))]
+    if (reset) searchTopIssues.value = [...mapped].sort((a, b) => b.articles - a.articles).slice(0, 3)
     searchCursorValue.value = typeof response.nextCursorValue === 'number' ? response.nextCursorValue : null
     searchCursorId.value = response.nextCursorId
     searchHasNext.value = response.hasNext
-  } catch { if (reset) results.value = mockIssues.filter((issue) => `${issue.title} ${issue.summary} ${issue.category}`.includes(keyword.value)); searchHasNext.value = false }
-  finally { searchLoading.value = false }
+  } catch {
+    if (reset) {
+      results.value = mockIssues.filter((issue) => `${issue.title} ${issue.summary} ${issue.category}`.includes(keyword.value))
+      searchTopIssues.value = [...results.value].sort((a, b) => b.articles - a.articles).slice(0, 3)
+    }
+    searchHasNext.value = false
+  }
+  finally { searchLoading.value = false; if (reset) searchTopLoading.value = false }
 }
 
 function loadMoreSearch() { if (!searchLoading.value && searchHasNext.value) { sendLog('SEARCH_SCROLL', { keyword: keyword.value, cursorValue: searchCursorValue.value, cursorId: searchCursorId.value }); void loadSearch(false) } }
@@ -380,7 +470,10 @@ function handlePopState(event: PopStateEvent) {
   if (state.page === 'search') void loadSearch(true)
 }
 
-function handleDocumentClick(event: MouseEvent) { if (searchOpen.value && !searchBox.value?.contains(event.target as Node)) searchOpen.value = false }
+function handleDocumentClick(event: MouseEvent) {
+  if (searchOpen.value && !searchBox.value?.contains(event.target as Node)) searchOpen.value = false
+  if (datePickerOpen.value && !(event.target as Element).closest('.date-range-filter')) datePickerOpen.value = false
+}
 watch(feedSentinel, (element, previous) => { if (previous) feedObserver?.unobserve(previous); if (element) feedObserver?.observe(element) })
 watch(searchSentinel, (element, previous) => { if (previous) searchObserver?.unobserve(previous); if (element) searchObserver?.observe(element) })
 watch(searchOpen, (isOpen) => { if (!isOpen) clearRelatedSearch() })
@@ -428,10 +521,31 @@ onBeforeUnmount(() => { clearRelatedSearch(); window.removeEventListener('popsta
   <main class="wrap" @click="searchOpen = false">
     <template v-if="page === 'home'">
       <div class="layout"><section class="feed">
-        <div class="title"><div><button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button><button :class="{ active: sort === '최신순' }" @click="selectSort('최신순')">최신순</button></div><time>실시간 기준</time></div>
-        <article v-for="issue in feed" :key="issue.id" tabindex="0" @click="detail(issue)" @keydown.enter="detail(issue)">
-          <div class="feed-article-body"><div class="feed-kicker"><span>{{ issue.category }}</span><small>·　{{ issue.time }}</small></div><h3>{{ issue.title }}</h3><div class="feed-meta">{{ issue.press }}개 언론사　·　관련 기사 {{ issue.articles }}건 묶음</div></div>
-          <div class="feed-briefing-preview"><strong>COMMON FACTS<br>공통사실 브리핑</strong><ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol></div>
+        <div class="title">
+          <div><button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button><button :class="{ active: sort === '최신순' }" @click="selectSort('최신순')">최신순</button></div>
+          <form class="date-range-filter" @submit.prevent="applyDateRange">
+            <span>{{ dateRangeActive ? '기간 기준' : '실시간 기준' }}</span>
+            <button class="date-picker-trigger" type="button" :aria-expanded="datePickerOpen" @click="toggleDatePicker">{{ dateRangeLabel }} <b>▾</b></button>
+            <button v-if="dateRangeActive" class="date-range-reset" type="button" :disabled="feedLoading" @click="clearDateRange">초기화</button>
+            <div v-if="datePickerOpen" class="date-picker" @click.stop>
+              <div class="date-picker-head"><button type="button" aria-label="이전 달" @click="changeCalendarMonth(-1)">‹</button><strong>{{ calendarTitle }}</strong><button type="button" aria-label="다음 달" @click="changeCalendarMonth(1)">›</button></div>
+              <div class="date-picker-week"><span v-for="day in ['일','월','화','수','목','금','토']" :key="day">{{ day }}</span></div>
+              <div class="date-picker-days"><template v-for="day in calendarDays" :key="day.key"><button v-if="day.label" type="button" :class="{ selected: day.selected, 'in-range': day.inRange, start: day.isStart, end: day.isEnd }" @click="selectCalendarDate(day.date)">{{ day.label }}</button><span v-else></span></template></div>
+              <p>{{ dateFromInput ? (dateToInput ? `${dateFromInput}부터 ${dateToInput}까지` : '종료일을 선택해주세요.') : '시작일을 선택해주세요.' }}</p>
+              <div class="date-picker-actions"><button type="button" @click="dateFromInput = ''; dateToInput = ''; dateRangeError = ''">다시 선택</button><button type="submit" :disabled="feedLoading || !dateFromInput || !dateToInput">적용</button></div>
+            </div>
+            <small v-if="dateRangeError" role="alert">{{ dateRangeError }}</small>
+          </form>
+        </div>
+        <article v-for="issue in feed" :key="issue.id">
+          <a class="feed-card" :href="`?issue=${issue.id}`" @click.prevent="detail(issue)">
+            <div class="feed-article-body">
+              <div class="feed-kicker"><span>{{ issue.category }}</span><small>·　{{ issue.time }}</small></div>
+              <h3>{{ issue.title }}</h3>
+              <div class="feed-meta-row"><div class="feed-meta"><span>{{ issue.press }}개 언론사</span><i>·</i><span>관련 기사 <strong>{{ issue.articles }}건</strong> 묶음</span></div></div>
+            </div>
+            <div class="feed-briefing-preview"><strong>COMMON FACTS<br>공통사실 브리핑</strong><ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol></div>
+          </a>
         </article>
         <button v-if="feedHasNext" ref="feedSentinel" class="more" :disabled="feedLoading" @click="loadMoreFeed">{{ feedLoading ? '뉴스를 불러오는 중입니다　○' : '더 많은 뉴스 불러오기' }}</button>
       </section></div>
@@ -469,8 +583,17 @@ onBeforeUnmount(() => { clearRelatedSearch(); window.removeEventListener('popsta
     </template>
 
     <template v-else>
-      <section class="results"><label>SEARCH RESULTS</label><h1>‘{{ keyword }}’ 검색 결과</h1><p>개별 기사가 아닌 관련 이슈를 모아 보여드립니다.</p><div class="list">
-        <article v-for="issue in results" :key="issue.id" @click="detail(issue, 'SEARCH')"><span>{{ issue.category }}</span><div><h3>{{ issue.title }}</h3><small>{{ issue.press }}개 언론사 · 기사 {{ issue.articles }}건</small></div><b>→</b></article>
+      <section class="results"><label>SEARCH RESULTS</label><h1>‘{{ keyword }}’ 검색 결과</h1><p>개별 기사가 아닌 관련 이슈를 모아 보여드립니다.</p>
+        <section class="search-top-issues" aria-labelledby="search-top-title">
+          <div class="search-top-head"><div><span>TOP ISSUES</span><h2 id="search-top-title">관련 주요 뉴스</h2></div></div>
+          <div class="search-top-grid">
+            <a v-for="(issue, index) in searchTopIssues" :key="issue.id" :href="`?issue=${issue.id}`" @click.prevent="detail(issue, 'SEARCH')"><div><em>{{ String(index + 1).padStart(2, '0') }}</em><span>{{ issue.category }}</span></div><h3>{{ issue.title }}</h3><p>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></p></a>
+            <div v-for="index in (searchTopLoading ? 3 : 0)" :key="`top-loading-${index}`" class="search-top-skeleton" aria-hidden="true"></div>
+          </div>
+        </section>
+        <div class="search-list-head"><b>검색 결과</b></div>
+        <div class="list">
+        <article v-for="issue in results" :key="issue.id" class="search-result-item" @click="detail(issue, 'SEARCH')"><span>{{ issue.category }}</span><div><h3>{{ issue.title }}</h3><small>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></small></div><b aria-hidden="true">›</b></article>
         <div v-if="!results.length && !searchLoading" class="empty"><b>검색 결과가 없습니다.</b><p>다른 키워드로 다시 검색해보세요.</p></div>
         <button v-if="searchHasNext" ref="searchSentinel" class="more" :disabled="searchLoading" @click="loadMoreSearch">{{ searchLoading ? '검색 결과를 불러오는 중입니다　○' : '검색 결과 더보기' }}</button>
       </div></section>

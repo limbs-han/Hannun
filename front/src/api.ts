@@ -128,6 +128,17 @@ export const api = {
     return request<CursorIssueResponse>('/api/issues', undefined, params)
   },
 
+  getIssuesByDateRange(params: {
+    category: string
+    from: string
+    to: string
+    sort?: FeedSort
+    cursorValue?: number | string | null
+    cursorId?: number | null
+  }) {
+    return request<CursorIssueResponse>('/api/issues/date-range', undefined, params)
+  },
+
   getIssue(issueId: number, stance: ApiStance, page = 0) {
     return request<IssueDetailResponse>(`/api/issues/${issueId}`, undefined, { stance, page })
   },
