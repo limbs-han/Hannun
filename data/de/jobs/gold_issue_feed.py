@@ -10,8 +10,8 @@ DS 사슬은 이슈 번호와 기사 번호만 남기고 제목·링크는 다�
 DS gold 와 ds_output 은 로컬 경로다. DS 코드가 HDFS 를 쓰지 못해 그대로 두고 읽기
 전용으로 붙인다.
 
-  spark-submit --master local[*] jobs/gold_issue_feed.py            # 오늘(KST)
-  spark-submit --master local[*] jobs/gold_issue_feed.py 2026-09-08
+  spark-submit --master local[*] jobs/gold_issue_feed.py            # 오늘(KST), 가장 늦은 창
+  spark-submit --master local[*] jobs/gold_issue_feed.py 2026-09-08 --window 2026-09-07
 """
 
 import argparse
@@ -89,18 +89,31 @@ def merge_ds2(feed, ds2):
             .drop("ds2_label", "ds2_stance", "ds2_fact_summary", "ds2_briefing", "ds2_category"))
 
 
-def build(spark, day):
-    """DS 표 셋을 합쳐 기사당 한 줄인 표를 만들고 DS2 분석 값을 붙인다."""
+def latest_window(spark):
+    """DS 산출물에 있는 가장 늦은 창."""
+    summary = spark.read.parquet(f"file://{DS_GOLD}/issue_summary")
+    return str(summary.agg(F.max("window_start")).collect()[0][0])
+
+
+def build(spark, day, window=None):
+    """DS 표 셋을 합쳐 기사당 한 줄인 표를 만들고 DS2 분석 값을 붙인다.
+
+    window 는 DS 산출물의 창이고, 생략하면 가장 늦은 창을 쓴다.
+    """
     summary = spark.read.parquet(f"file://{DS_GOLD}/issue_summary")
     registry = spark.read.parquet(f"file://{DS_GOLD}/issue_registry")
     articles = spark.read.parquet(f"file://{DS_GOLD}/articles")
 
-    # 같은 이슈가 여러 창에 있으면 가장 최근 계산본만 쓴다
-    latest = summary.groupBy("issue_id").agg(F.max("summarized_at").alias("summarized_at"))
-    summary = summary.join(latest, ["issue_id", "summarized_at"])
-    registry = registry.join(
-        registry.groupBy("issue_id").agg(F.max("succeeded_at").alias("succeeded_at")),
-        ["issue_id", "succeeded_at"])
+    # 이슈 번호는 창마다 다시 배정된다 — 같은 번호가 창에 따라 다른 사건을 가리키므로
+    # 창을 섞으면 이슈에 딴 기사가 붙는다. 창 하나를 통째로 쓴다. 실측으로 섞었을 때
+    # DS2 가 48% 만 붙었고 창을 맞추면 99% 붙었다
+    window = window or latest_window(spark)
+    picked = F.col("window_start") == F.lit(window).cast("date")
+    summary, registry = summary.where(picked), registry.where(picked)
+    if summary.rdd.isEmpty():
+        # 빈 표로 gold 를 덮으면 이미 발행한 이슈가 사라진다
+        raise SystemExit(f"DS 산출물에 창 {window} 이 없다")
+    logger.info("DS 창 %s", window)
 
     rep = articles.select(
         F.col("article_id").alias("representative"),
@@ -133,8 +146,8 @@ def build(spark, day):
             .withColumn("dt", F.lit(day)))
 
 
-def build_with_ds2(spark, day):
-    return merge_ds2(build(spark, day), read_ds2(spark))
+def build_with_ds2(spark, day, window=None):
+    return merge_ds2(build(spark, day, window), read_ds2(spark))
 
 
 def write(df, day):
@@ -150,6 +163,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser()
     ap.add_argument("day", nargs="?", help="쌓을 날짜. 생략하면 오늘(KST)")
+    ap.add_argument("--window", help="쓸 DS 창. 생략하면 가장 늦은 창")
     args = ap.parse_args()
     day = args.day or today_kst()
 
@@ -157,6 +171,6 @@ if __name__ == "__main__":
              .config("spark.locality.wait", "0")  # bronze_to_silver 와 같은 이유
              .getOrCreate())
     try:
-        write(build_with_ds2(spark, day), day)
+        write(build_with_ds2(spark, day, args.window), day)
     finally:
         spark.stop()
