@@ -1,7 +1,14 @@
-"""Kafka → HDFS bronze → silver 15분 적재 DAG (S15P21E105-66, -68).
+"""Kafka → HDFS bronze → silver → DS 입력 15분 DAG (S15P21E105-66, -68, -118).
 
 전 구간 신선도 목표(S15P21E105-73)의 적재·정형화 구간을 담당한다. bronze 적재가
-끝나면 이어서 오늘·어제 적재분을 silver 에 반영한다 (한 DAG 라 동시 실행이 없다).
+끝나면 이어서 오늘·어제 적재분을 silver 에 반영하고, 갱신된 silver 를 DS 입력으로
+내린다 (한 DAG 라 동시 실행이 없다).
+
+내려주기가 여기 붙은 이유: silver 가 갱신된 직후여야 헛일이 없다. 따로 15분 DAG 를
+두면 대기줄을 다투다가 silver 갱신 전에 내려가는 일이 생긴다.
+
+이름이 bronze_ingest 였다가 bronze 만 다루지 않게 되어 바꿨다. 실시간분만 담당하고,
+과거 데이터 재구축은 bronze_to_silver.py --full 수동 실행이다.
 """
 
 from datetime import datetime
@@ -15,7 +22,7 @@ from airflow.operators.bash import BashOperator
 SPARK_POOL = "spark_local"
 
 with DAG(
-    dag_id="bronze_ingest",
+    dag_id="article_ingest",
     start_date=datetime(2026, 9, 1),
     schedule="*/15 * * * *",
     catchup=False,
@@ -40,4 +47,17 @@ with DAG(
             "/opt/airflow/jobs/bronze_to_silver.py"
         ),
     )
-    kafka_to_bronze >> bronze_to_silver
+    # silver 가 갱신된 직후 DS 입력을 내린다. 하루 한 번에서 15분마다로 옮겼다
+    # (S15P21E105-118) — DS 가 15분 배정 루프를 붙일 수 있게 하는 조건이다.
+    # 하루 한 파일 불변식은 그대로고, os.replace 로 원자적으로 갈아치우므로 DS 가
+    # 읽는 중에 덮어도 열려 있던 파일은 온전하다
+    silver_to_ds_input = BashOperator(
+        task_id="silver_to_ds_input",
+        pool=SPARK_POOL,
+        bash_command=(
+            "spark-submit --master 'local[*]' --driver-memory 2g "
+            "/opt/airflow/jobs/silver_to_ds_input.py --sync"
+        ),
+    )
+
+    kafka_to_bronze >> bronze_to_silver >> silver_to_ds_input
