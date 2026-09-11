@@ -20,6 +20,9 @@ const NETWORK_DELAY = 260
 
 const delay = <T>(value: T): Promise<T> => new Promise((r) => setTimeout(() => r(value), NETWORK_DELAY))
 
+// 확정 검색만 집계합니다(preview 제외). 실제 서버가 하는 일을 흉내낸 것입니다.
+const confirmedSearches = new Map<string, number>()
+
 interface Seed {
   issueId: number
   category: string
@@ -351,10 +354,14 @@ export const mockApi: HannunApi = {
   },
 
   getSearchSuggestions() {
-    return delay({ popularKeywords: ['한·미 정상회담', '기준금리', '집중호우', 'AI 기본법', '가계대출', '국제 유가'] })
+    const counted = [...confirmedSearches.entries()].sort((a, b) => b[1] - a[1]).map(([word]) => word)
+    const base = ['한·미 정상회담', '기준금리', '집중호우', 'AI 기본법', '가계대출', '국제 유가']
+    return delay({ popularKeywords: [...new Set([...counted, ...base])].slice(0, 10) })
   },
 
-  search({ keyword, category, cursorValue, cursorId }) {
+  search({ keyword, category, cursorValue, cursorId, preview }) {
+    // preview 호출은 집계에서 빼고, 확정 검색(첫 페이지)만 셉니다.
+    if (!preview && cursorId == null) confirmedSearches.set(keyword, (confirmedSearches.get(keyword) ?? 0) + 1)
     const hit = SEEDS.filter(
       (s) =>
         (!category || category === 'ALL' || s.category === category) &&
