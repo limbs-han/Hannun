@@ -11,7 +11,7 @@ RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <category>정치</category></item>
 </channel></rss>"""
 
-FEEDS = [{"company": "테스트", "publisher_id": "test", "rss": [RSS_XML]}]
+FEEDS = [{"company": "테스트", "publisher_id": "test", "rss": {"정치": RSS_XML}}]
 
 
 class FakeProducer:
@@ -60,6 +60,8 @@ def test_run_publishes_8_field_article(tmp_path):
     # RSS pubDate 가 페이지 날짜보다 우선하고, 송신 스펙대로 +09:00 오프셋이 붙는다
     assert msg["published"] == "2026-08-26T14:30:00+09:00"
     assert msg["category_str"] == "정치"
+    # 카테고리는 RSS 태그가 아니라 받아온 피드에서 온다 (S15P21E105-61)
+    assert msg["category"] == "정치"
     assert msg["reporter"] == "홍길동"
     assert len(msg["article"]) >= 100
 

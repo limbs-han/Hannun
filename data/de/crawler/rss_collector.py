@@ -55,7 +55,7 @@ def collect_new(db_path, feeds=FEEDS):
     now = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
     items = []
     for feed in feeds:
-        for rss_url in feed["rss"]:
+        for category, rss_url in feed["rss"].items():
             try:
                 parsed = feedparser.parse(rss_url, agent=USER_AGENT)
             except Exception:
@@ -80,7 +80,10 @@ def collect_new(db_path, feeds=FEEDS):
                     "title": title,
                     "link": link,
                     "published": _published_kst(entry),
-                    # RSS category 태그 원문. 코드 매핑은 적재 변환(-66) 몫
+                    # 받아온 피드가 곧 카테고리다 (S15P21E105-61). RSS category 태그는
+                    # 절반 이상이 비고 주는 곳도 "헤드라인" 처럼 피드 이름을 넣는다
+                    "category": category,
+                    # RSS category 태그 원문. 언론사가 준 그대로 두고 쓰는 쪽이 판단한다
                     "category_str": tags[0] if tags else None,
                 })
     conn.commit()

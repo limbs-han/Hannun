@@ -7,7 +7,7 @@ RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <item><title>둘째 기사</title><link>https://news.test/a/2</link></item>
 </channel></rss>"""
 
-FEEDS = [{"company": "테스트", "publisher_id": "test", "rss": [RSS_XML]}]
+FEEDS = [{"company": "테스트", "publisher_id": "test", "rss": {"정치": RSS_XML}}]
 
 
 def test_collect_and_dedup(tmp_path):
