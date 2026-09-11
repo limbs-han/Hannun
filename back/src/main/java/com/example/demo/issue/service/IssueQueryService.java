@@ -126,13 +126,15 @@ public class IssueQueryService {
                 stanceRatio, stance, viewpointGroups, viewpointGroupPage);
     }
 
-    public SearchListResponse search(String keyword, String category, Double cursorValue, Long cursorId, int size) {
+    public SearchListResponse search(String keyword, String category, Double cursorValue, Long cursorId, boolean preview, int size) {
         List<IssueSearchRow> rows = issueRepository.searchByKeyword(keyword, category, cursorValue, cursorId, size + 1);
         CursorPage<IssueSearchRow> cursorPage = CursorPage.of(rows, size);
         List<SearchItem> items = cursorPage.items().stream().map(this::toSearchItem).toList();
 
-        // cursor가 둘 다 없을 때만 = 실제 "검색 실행"(첫 페이지). 이후 스크롤(SEARCH_SCROLL)은 인기 검색어 집계 대상이 아님.
-        if (cursorValue == null && cursorId == null) {
+        // cursor가 둘 다 없을 때만 = 첫 페이지. 이후 스크롤(SEARCH_SCROLL)은 인기 검색어 집계 대상이 아님.
+        // preview(타이핑 중 실시간 미리보기)도 제외 - 사용자가 확정하지 않은 입력 중간값이라
+        // 그대로 카운트하면 "한" "한ㅅ" "한수" "한숫" "한국" 이 다 따로 집계돼 인기 검색어가 오염됨.
+        if (!preview && cursorValue == null && cursorId == null) {
             searchEventPublisher.publishSearchExecuted(keyword);
         }
 

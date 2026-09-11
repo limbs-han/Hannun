@@ -24,9 +24,12 @@ public class SearchController {
             @RequestParam String keyword,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) Double cursorValue,
-            @RequestParam(required = false) Long cursorId
+            @RequestParam(required = false) Long cursorId,
+            // 타이핑 중 실시간 미리보기 호출은 true로. 인기 검색어 집계 대상에서 제외됨(사용자가
+            // 확정한 검색어가 아니라 입력 중간값이라 카운트하면 인기 검색어가 오염됨).
+            @RequestParam(defaultValue = "false") boolean preview
     ) {
-        return issueQueryService.search(keyword, category, cursorValue, cursorId, DEFAULT_SIZE);
+        return issueQueryService.search(keyword, category, cursorValue, cursorId, preview, DEFAULT_SIZE);
     }
 
     @GetMapping("/suggestions")
