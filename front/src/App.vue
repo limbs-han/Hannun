@@ -460,7 +460,8 @@ function queueRelatedSearch(value = query.value) {
 
   relatedSearchTimer = setTimeout(async () => {
     try {
-      const response = await api.search({ keyword: term, category: category.value === '전체' ? undefined : category.value })
+      // 타이핑 중 호출 — 인기 검색어 집계에서 제외되도록 preview 를 켭니다.
+      const response = await api.search({ keyword: term, category: category.value === '전체' ? undefined : category.value, preview: true })
       if (requestId !== relatedSearchRequestId || relatedSearchTerm.value !== term) return
       relatedSearchResults.value = response.items.map(mapIssue).slice(0, 6)
     } catch {
@@ -530,6 +531,7 @@ async function search(word = query.value) {
   localStorage.setItem('hannun-recent', JSON.stringify(recent.value))
   navigate({ __hannun: true, page: 'search', keyword: value })
   await loadSearch(true)
+  void loadPopularKeywords()
 }
 
 async function loadSearch(reset = false) {
@@ -537,7 +539,8 @@ async function loadSearch(reset = false) {
   searchLoading.value = true
   if (reset) { searchCursorValue.value = null; searchCursorId.value = null; searchTopIssues.value = []; searchTopLoading.value = true }
   try {
-    const response = await api.search({ keyword: keyword.value, category: category.value === '전체' ? undefined : category.value, cursorValue: reset ? null : searchCursorValue.value, cursorId: reset ? null : searchCursorId.value })
+    // 사용자가 확정한 검색 — preview:false 로 보내야 인기 검색어에 반영됩니다.
+    const response = await api.search({ keyword: keyword.value, category: category.value === '전체' ? undefined : category.value, cursorValue: reset ? null : searchCursorValue.value, cursorId: reset ? null : searchCursorId.value, preview: false })
     const mapped = response.items.map(mapIssue)
     results.value = reset ? mapped : [...results.value, ...mapped.filter((item) => !results.value.some((existing) => existing.id === item.id))]
     if (reset) searchTopIssues.value = [...mapped].sort((a, b) => b.articles - a.articles).slice(0, 3)
