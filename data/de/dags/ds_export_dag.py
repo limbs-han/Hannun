@@ -1,4 +1,15 @@
-"""DS 입력 내려주기 DAG (DS 연동).
+"""DS 입력 내려주기 DAG — 꺼진 채 남겨 둔다 (S15P21E105-118 로 갈라짐).
+
+**이 DAG 는 쓰지 않는다.** 세 태스크가 각자 자리를 옮겼다.
+
+- 내려주기: article_ingest DAG 로 (15분마다, 하루 한 번에서 바뀜)
+- 사슬과 gold: ds_daily DAG 로 (하루 한 번 유지)
+
+파일과 실행 이력을 남기려고 지우지 않았다. 되돌릴 때 이 파일을 보면 옛 구성을 알 수 있다.
+배포 뒤 `airflow dags pause ds_export` 로 꺼야 한다 — is_paused_upon_creation 은 DAG 가
+처음 등록될 때만 쓰이고 이미 등록된 DAG 에는 적용되지 않는다.
+
+아래는 갈라지기 전 내용이다.
 
 silver 를 DS 가 읽는 로컬 JSONL 로 풀어준다. 03:00 새벽 정비가 끝난 뒤인 04:00 KST 에
 돌려, 파일 합치기와 silver 갱신이 안정된 상태를 내보낸다.
@@ -31,8 +42,8 @@ with DAG(
     schedule="0 4 * * *",
     catchup=False,
     max_active_runs=1,
-    is_paused_upon_creation=False,
-    tags=["ds"],
+    is_paused_upon_creation=True,  # 갈라진 뒤로는 쓰지 않는다
+    tags=["ds", "deprecated"],
 ) as dag:
     export = BashOperator(
         task_id="silver_to_ds_input",
