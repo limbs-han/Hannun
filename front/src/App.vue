@@ -119,7 +119,17 @@ let searchObserver: IntersectionObserver | null = null
 let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
 let relatedSearchRequestId = 0
 
-const feed = computed(() => issues.value)
+// 화제성 상위 2건은 맨 위 블럭으로 빼고, 목록에서는 중복 제거합니다.
+// 3건 미만이면 블럭을 띄우지 않습니다 — 아래 목록이 비어버리기 때문입니다.
+const featuredIssues = computed(() =>
+  issues.value.length > 2
+    ? [...issues.value].sort((a, b) => (b.score ?? b.articles) - (a.score ?? a.articles)).slice(0, 2)
+    : [],
+)
+const feed = computed(() => {
+  const top = new Set(featuredIssues.value.map((issue) => issue.id))
+  return issues.value.filter((issue) => !top.has(issue.id))
+})
 const dateRangeActive = computed(() => Boolean(appliedDateFrom.value && appliedDateTo.value))
 const dateRangeLabel = computed(() => {
   if (dateFromInput.value && dateToInput.value) return `${dateFromInput.value} – ${dateToInput.value}`
@@ -323,6 +333,24 @@ function applyNavigation(state: NavigationState) {
 function navigate(state: NavigationState) { applyNavigation(state); window.history.pushState(state, '') }
 function home() { navigate({ __hannun: true, page: 'home' }) }
 
+// 로고 클릭 — 카테고리·정렬·기간·검색어까지 처음 들어온 상태로 되돌립니다.
+// home() 은 selectCategory() 도 쓰므로 따로 둡니다(거기서 초기화하면 카테고리 선택이 바로 풀립니다).
+async function resetToHome() {
+  category.value = '전체'
+  sort.value = '화제성순'
+  query.value = ''
+  keyword.value = ''
+  searchOpen.value = false
+  dateFromInput.value = ''
+  dateToInput.value = ''
+  appliedDateFrom.value = ''
+  appliedDateTo.value = ''
+  dateRangeError.value = ''
+  datePickerOpen.value = false
+  home()
+  await loadFeed(true)
+}
+
 function detail(issue: Issue, referrer: 'MAIN_FEED' | 'SEARCH' = 'MAIN_FEED') {
   selected.value = issue
   navigate({ __hannun: true, page: 'detail', issueId: issue.id })
@@ -471,16 +499,20 @@ function highlightedSearchText(text: string) {
   return parts.length ? parts : [{ text, matched: false }]
 }
 
-async function openSearch() {
-  searchOpen.value = true
-  sendLog('OPEN_SEARCH', {})
-  if (query.value.trim()) { queueRelatedSearch(); return }
+// 인기 검색어는 홈 사이드에 상시 노출되므로 진입 시점에 불러옵니다.
+async function loadPopularKeywords() {
   try {
     const response = await api.getSearchSuggestions()
     popularKeywords.value = [...new Set([...response.popularKeywords, ...defaultPopularKeywords])].slice(0, 10)
   } catch {
     /* 목업 유지 */
   }
+}
+
+async function openSearch() {
+  searchOpen.value = true
+  sendLog('OPEN_SEARCH', {})
+  if (query.value.trim()) queueRelatedSearch()
 }
 
 function clickPopularKeyword(word: string) { sendLog('CLICK_POPULAR_KEYWORD', { keyword: word }); query.value = word; void search(word) }
@@ -557,6 +589,7 @@ onMounted(() => {
   feedObserver = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) loadMoreFeed() }, { rootMargin: '200px' })
   searchObserver = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) loadMoreSearch() }, { rootMargin: '200px' })
   void loadFeed(true)
+  void loadPopularKeywords()
 })
 
 onBeforeUnmount(() => {
@@ -572,7 +605,7 @@ onBeforeUnmount(() => {
   <header>
     <div class="head wrap">
       <time>2026년 8월 27일 목요일</time>
-      <button class="logo" aria-label="한눈 홈으로 이동" @click="home">
+      <button class="logo" aria-label="한눈 홈으로 이동" @click="resetToHome">
         <span class="logo-mark"><img :src="hannunLogo" alt="한눈" /></span>
         <span class="logo-tagline">사실 먼저, 관점은 원할 때</span>
       </button>
@@ -608,24 +641,16 @@ onBeforeUnmount(() => {
             </button>
             <p v-if="!relatedSearchLoading && !relatedSearchResults.length">연관된 이슈가 없습니다.</p>
           </section>
-          <template v-else>
-            <section class="recent-words">
-              <b>최근 검색어</b>
-              <p v-if="!recent.length">최근 검색어가 없습니다.</p>
-              <div v-else class="recent-chips">
-                <div v-for="word in recent" :key="word" class="recent-word">
-                  <button class="recent-word-label" @click="search(word)">{{ word }}</button>
-                  <button class="recent-word-remove" :aria-label="`${word} 최근 검색어 삭제`" @click.stop="removeRecentKeyword(word)">×</button>
-                </div>
+          <section v-else class="recent-words">
+            <b>최근 검색어</b>
+            <p v-if="!recent.length">최근 검색어가 없습니다.</p>
+            <div v-else class="recent-chips">
+              <div v-for="word in recent" :key="word" class="recent-word">
+                <button class="recent-word-label" @click="search(word)">{{ word }}</button>
+                <button class="recent-word-remove" :aria-label="`${word} 최근 검색어 삭제`" @click.stop="removeRecentKeyword(word)">×</button>
               </div>
-            </section>
-            <section class="search-trends">
-              <div><b>인기 검색어</b><time>실시간</time></div>
-              <button v-for="(word, index) in popularKeywords" :key="word" @click="clickPopularKeyword(word)">
-                <em>{{ index + 1 }}</em><span>{{ word }}</span>
-              </button>
-            </section>
-          </template>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -637,6 +662,20 @@ onBeforeUnmount(() => {
   <main class="wrap" @click="searchOpen = false">
     <!-- 1·6. 메인 피드 -->
     <template v-if="page === 'home'">
+      <section v-if="featuredIssues.length" class="hero" aria-labelledby="hero-title">
+        <div class="hero-head"><span>TOP ISSUES</span><h2 id="hero-title">화제성 높은 이슈</h2></div>
+        <div class="hero-grid">
+          <a v-for="(issue, index) in featuredIssues" :key="issue.id" :href="`?issue=${issue.id}`" @click.prevent="detail(issue)">
+            <div><em>{{ String(index + 1).padStart(2, '0') }}</em><span>{{ issue.category }}</span></div>
+            <h3>{{ issue.title }}</h3>
+            <div class="hero-brief">
+              <ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol>
+            </div>
+            <p>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></p>
+          </a>
+        </div>
+      </section>
+
       <div class="layout">
         <section class="feed">
           <div class="title">
@@ -681,7 +720,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="feed-briefing-preview">
-                <strong>COMMON FACTS<br />공통사실 브리핑</strong>
+                <strong>공통사실 브리핑</strong>
                 <ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol>
               </div>
             </a>
@@ -691,6 +730,15 @@ onBeforeUnmount(() => {
             {{ feedLoading ? '뉴스를 불러오는 중입니다　○' : '더 많은 뉴스 불러오기' }}
           </button>
         </section>
+
+        <aside v-if="popularKeywords.length" class="trends" aria-labelledby="trends-title">
+          <div class="trends-head"><span>REALTIME</span><h2 id="trends-title">인기 검색어</h2></div>
+          <ol class="trend-list">
+            <li v-for="(word, index) in popularKeywords" :key="word">
+              <button @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button>
+            </li>
+          </ol>
+        </aside>
       </div>
     </template>
 
