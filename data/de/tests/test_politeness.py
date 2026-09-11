@@ -56,7 +56,7 @@ RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <pubDate>Wed, 26 Aug 2026 05:31:00 GMT</pubDate></item>
 </channel></rss>"""
 
-FEEDS = [{"company": "테스트", "publisher_id": "test", "rss": [RSS_XML]}]
+FEEDS = [{"company": "테스트", "publisher_id": "test", "rss": {"정치": RSS_XML}}]
 
 
 class AllowAll:

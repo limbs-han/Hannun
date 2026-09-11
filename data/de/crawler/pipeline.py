@@ -45,7 +45,8 @@ def build_article(item, parsed):
         "title": item["title"],
         "link": item["link"],
         "published": _to_iso_kst(item.get("published") or parsed.get("published")),
-        "category": None,  # 코드 매핑은 적재 변환(-66) 몫
+        # 받아온 피드에서 온 값 (S15P21E105-61). 섹션 피드가 없는 분야는 빈다
+        "category": item.get("category"),
         "category_str": item.get("category_str"),
         "reporter": parsed.get("reporter"),
         "thumbnail_url": parsed.get("thumbnail_url"),
