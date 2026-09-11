@@ -14,7 +14,7 @@ import type {
 } from './api'
 import { STANCES } from './api'
 
-const PAGE = 6
+const PAGE = 9
 const GROUP_PAGE = 2
 const NETWORK_DELAY = 260
 
