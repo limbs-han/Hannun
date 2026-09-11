@@ -122,6 +122,8 @@ export interface SearchQuery {
   category?: string
   cursorValue?: number | null
   cursorId?: number | null
+  /** 타이핑 중 실시간 미리보기면 true. 서버가 인기 검색어 집계에서 제외합니다. */
+  preview?: boolean
 }
 
 export interface HannunApi {
@@ -141,7 +143,7 @@ export interface HannunApi {
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
-type Params = Record<string, string | number | null | undefined>
+type Params = Record<string, string | number | boolean | null | undefined>
 
 function buildUrl(path: string, params?: Params) {
   const url = new URL(`${API_BASE_URL}${path}`, window.location.origin)
