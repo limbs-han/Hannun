@@ -31,11 +31,21 @@ Pushgateway 가 용도에 맞고, 그쪽이면 A 가 보내는(push) 쪽이 된�
 | `pipeline_silver_dropped_rows` | bronze_to_silver | 본문 없음·형식 불량으로 제외된 건수 |
 | `pipeline_silver_unknown_publisher_rows` | bronze_to_silver | 미등록 언론사 건수. `publisher` 라벨에 이름 |
 | `pipeline_ingest_lag_seconds` | bronze_to_silver | 레이크의 최신 기사가 몇 초 전 발행분인지 |
-| `pipeline_ds_input_stale_days` | silver_to_ds_input | silver 를 못 따라간 날짜 수. 0 이어야 정상 |
+| `pipeline_ds_input_stale_days` | silver_to_ds_input | 이번에 다시 내려준 날짜 수. 평소 두셋 |
 | `pipeline_gold_issues` | gold_issue_feed | 발행 대상 이슈 수 |
 | `pipeline_gold_articles` | gold_issue_feed | 발행 대상 기사 수 |
 | `pipeline_gold_ds2_matched_rows` | gold_issue_feed | 관점 값이 붙은 기사 수 |
 | `pipeline_gold_window` | gold_issue_feed | 마지막으로 읽은 DS 창. `window` 라벨에 날짜 |
+
+### 뒤처진 날짜는 0 이 정상이 아니다
+
+silver 가 갱신된 날짜는 파일보다 새로워지므로 매번 뒤처진 것으로 잡혀 다시 내려간다.
+15분마다 실시간 기사가 들어오니 오늘과 어제가 늘 잡히고, **평소 두세 날짜가 정상이다.**
+0 은 silver 가 아예 안 바뀐 때뿐이다.
+
+값이 갑자기 커지면 둘 중 하나다. 내려주기가 밀렸거나, RSS 가 옛 기사를 무더기로 줘서
+오래된 날짜의 silver 가 갱신됐거나. 실측으로 2026-09-11 에 6월 1일과 9월 1일이 함께
+잡힌 적이 있고 한 번 내려준 뒤로는 안 잡혔다.
 
 ### 적재 지연을 이렇게 재는 이유
 

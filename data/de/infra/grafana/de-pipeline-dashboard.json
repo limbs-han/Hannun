@@ -150,46 +150,28 @@
       ]
     },
     {
-      "type": "stat",
+      "type": "timeseries",
       "title": "뒤처진 날짜",
-      "description": "silver 가 갱신됐는데 ds_input 파일이 따라가지 못한 날짜 수. 0 이어야 정상이다.",
+      "description": "silver 가 갱신된 날짜는 매번 뒤처진 것으로 잡혀 다시 내려간다. 15분마다 실시간 기사가 들어오므로 평소 두세 날짜가 정상이고 0 은 silver 가 아예 안 바뀐 때뿐이다. 값이 갑자기 커지면 내려주기가 밀렸거나 RSS 가 옛 기사를 무더기로 준 것이다.",
       "gridPos": {
         "h": 8,
-        "w": 6,
+        "w": 8,
         "x": 12,
         "y": 16
       },
       "fieldConfig": {
         "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
+          "custom": {}
         },
         "overrides": []
       },
       "targets": [
         {
           "expr": "pipeline_ds_input_stale_days",
+          "legendFormat": "날짜 수",
           "refId": "A"
         }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      }
+      ]
     },
     {
       "type": "stat",
@@ -197,8 +179,8 @@
       "description": "gold 가 마지막으로 읽은 DS 산출물 창. DS2 결과 파일 이름과 같아야 관점 값이 붙는다.",
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 18,
+        "w": 4,
+        "x": 20,
         "y": 16
       },
       "fieldConfig": {
