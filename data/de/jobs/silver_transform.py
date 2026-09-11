@@ -63,6 +63,127 @@ class UnknownPublisher(KeyError):
     """
 
 
+# 카테고리 표준 이름 (S15P21E105-68).
+#
+# 과거 데이터셋에는 서로 다른 category 값이 2,253 개 있다. 사회·사회일반·지역·전국이
+# 따로 세어지고 경제·증권·부동산·경제일반이 흩어져 있어 그대로는 화면에서 목록을 나눌 수
+# 없다. 상위 값을 아홉 개로 합치고 **표에 없는 값은 원문 그대로 둔다** — 지역 방송
+# 프로그램명이 꼬리에 2천 개 넘게 있어 다 옮길 수 없고, 억지로 OTHER 로 보내면 정보가
+# 사라진다. 상위 60 개가 전체의 89% 다.
+#
+# 실시간 수집분은 섹션 피드 이름이 이미 표준값이라 이 표를 그냥 통과한다.
+_CATEGORY_ALIAS = {
+    "증권": "경제", "부동산": "경제", "금융": "경제",
+    "지역": "사회", "전국": "사회", "지방": "사회", "교육": "사회",
+    "대전세종충청": "사회", "검찰・법원": "사회", "사건": "사회",
+    "지구촌뉴스": "국제",
+    "생활문화": "문화", "생활": "문화",
+    "서경스타": "연예", "스타": "연예",
+    "IT": "IT과학", "IT과학": "IT과학", "IT의학": "IT과학", "과학": "IT과학",
+}
+
+# 분야가 아닌 값. 계약대로 결측(OTHER)으로 보낸다
+_NOT_A_CATEGORY = {"최신기사", "오피니언", "미분류", "일반", "사설칼럼", "연합뉴스",
+                   "전체", "헤드라인", "종합"}
+
+# 값을 쪼개는 구분자. "경제 · 금융" 은 첫 조각을 쓰고 "IT_과학" 은 붙여서 본다
+_SPLIT = ("·", "・", "/", ".", "|", ">", "-", "_")
+
+_STANDARD = {"정치", "경제", "사회", "국제", "문화", "스포츠", "연예", "IT과학", "산업"}
+
+
+def normalize_category(value):
+    """카테고리 값을 표준 이름으로 맞춘다. 표에 없으면 원문을 그대로 돌려준다."""
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+
+    # 구분자로 나눈 첫 조각과 구분자를 지운 형태를 함께 본다
+    joined = raw
+    first = raw
+    for sep in _SPLIT:
+        joined = joined.replace(sep, "")
+        if sep in first:
+            first = first.split(sep)[0]
+    for form in (raw, first.strip(), joined.replace(" ", "")):
+        head = form[:-2] if form.endswith("일반") and len(form) > 2 else form
+        for candidate in (form, head):
+            if candidate in _NOT_A_CATEGORY:
+                return "OTHER"
+            if candidate in _STANDARD:
+                return candidate
+            found = _CATEGORY_ALIAS.get(candidate)
+            if found:
+                return found
+    return raw
+
+
+# 기사 주소 경로에서 카테고리를 읽는 표 (S15P21E105-68).
+#
+# 섹션 피드를 쓰기 전(2026-09-11)에 모인 실시간 기사 3만 5천 건이 카테고리 없이 쌓였다.
+# 다섯 언론사는 주소 경로에 분야가 들어 있어 되살릴 수 있다. 나머지 여덟 곳은 기사 번호만
+# 있어 본문을 다시 긁어야 하고, 그 값어치가 열 시간 재수집에 못 미쳐 비워 둔다.
+#
+# 앞으로도 쓰인다. 연합뉴스와 조선일보는 IT과학 섹션 피드가 없어 그 분야가 비는데,
+# 조선일보는 주소로 메꿔진다.
+_LINK_CATEGORY = {
+    "politics": "정치", "congress": "정치", "president": "정치", "diplomacy": "정치",
+    "bluehouse": "정치",
+    "economy": "경제", "business": "경제", "stock": "경제", "finance": "경제",
+    "securities": "경제", "realestate": "경제", "estate": "경제", "industry": "경제",
+    "weeklybiz": "경제", "biznews": "경제", "car": "경제",
+    "society": "사회", "national": "사회", "accident": "사회", "law": "사회",
+    "area": "사회", "capital": "사회", "environment": "사회", "people": "사회",
+    "peoples": "사회",
+    "international": "국제", "inter": "국제", "world": "국제", "america": "국제",
+    "culture": "문화", "culture-life": "문화", "life": "문화", "book": "문화",
+    "sports": "스포츠", "sport": "스포츠", "baseball": "스포츠", "golf": "스포츠",
+    "entertainment": "연예", "starintern": "연예",
+    "it": "IT과학", "science": "IT과학",
+}
+
+# 한겨레는 society_general 처럼 뒤에 붙여 세분한다. 앞부분만 떼어 같은 표로 찾는다
+_GENERAL = ("_general", "-general")
+
+_PATH_WORD = re.compile(r"/([A-Za-z][A-Za-z_-]{1,24})(?=/)")
+
+
+def category_from_link(link):
+    """기사 주소 경로에서 카테고리를 읽는다. 못 찾으면 None.
+
+    경로 낱말을 앞에서부터 보고 표에 있는 첫 값을 쓴다. news·article·all 처럼 분야가
+    아닌 낱말은 표에 없어 그냥 지나간다.
+    """
+    if not link:
+        return None
+    path = link.split("//", 1)[-1]
+    path = path[path.index("/"):] if "/" in path else ""
+    for word in _PATH_WORD.findall(path):
+        word = word.lower()
+        for tail in _GENERAL:
+            if word.endswith(tail):
+                word = word[: -len(tail)]
+                break
+        found = _LINK_CATEGORY.get(word)
+        if found:
+            return found
+    return None
+
+
+def resolve_category(value, link):
+    """카테고리를 정한다. 표준 이름으로 맞추고, 비거나 OTHER 면 주소에서 읽는다.
+
+    OTHER 를 결측과 같이 보는 이유: 데이터셋 원본에 OTHER 가 들어 있거나 이전 적재가
+    OTHER 로 채운 값을 다시 읽을 때, 주소에서 읽을 수 있는데도 그냥 넘기면 안 된다.
+    """
+    found = normalize_category(value)
+    if not found or found == "OTHER":
+        found = category_from_link(link)
+    return found or "OTHER"
+
+
 def _record(company, title, link, published_utc, category, category_str, reporter, article,
             source_type, thumbnail_url, crawled_at):
     publisher_id = PUBLISHER_ID.get(company)
@@ -73,7 +194,9 @@ def _record(company, title, link, published_utc, category, category_str, reporte
         "title": title,
         "link": link,
         "published": published_utc,
-        "category": category or "OTHER",
+        # 피드가 카테고리를 안 줬으면 주소 경로에서 읽어 본다 (S15P21E105-68)
+        # 값을 표준 이름으로 맞추고, 없거나 OTHER 면 주소 경로에서 읽어 본다
+        "category": resolve_category(category, link),
         "category_str": category_str or None,
         "reporter": reporter or None,
         "article": article,

@@ -102,3 +102,75 @@ def test_bigkinds_line_passes_through_with_partition():
     _assert_v1(out)
     assert out["dt"] == "2024-07-01"  # UTC 14:59 → KST 23:59 같은 날
     assert st.from_bigkinds_line(json.dumps({**record, "article": ""})) is None
+
+
+def test_normalize_category_merges_variants():
+    """흩어진 표기를 표준 아홉 개로 모은다 (S15P21E105-68)."""
+    assert st.normalize_category("사회일반") == "사회"
+    assert st.normalize_category("정치일반") == "정치"
+    assert st.normalize_category("증권") == "경제"
+    assert st.normalize_category("금융/증권") == "경제"
+    assert st.normalize_category("경제 · 금융") == "경제"
+    assert st.normalize_category("지역") == "사회"
+    assert st.normalize_category("IT_과학") == "IT과학"
+    assert st.normalize_category("IT·과학") == "IT과학"
+    assert st.normalize_category("서경스타") == "연예"
+    # 산업은 실시간 섹션 피드에 있는 표준값이라 경제로 합치지 않는다
+    assert st.normalize_category("산업") == "산업"
+
+
+def test_normalize_category_drops_non_categories():
+    """분야가 아닌 값은 계약대로 결측으로 보낸다."""
+    for value in ("최신기사", "오피니언", "미분류", "일반", "사설.칼럼", "연합뉴스"):
+        assert st.normalize_category(value) == "OTHER", value
+
+
+def test_normalize_category_keeps_unknown_as_is():
+    """표에 없는 값은 원문을 지킨다.
+
+    과거 데이터셋에 서로 다른 값이 2,253 개 있고 꼬리는 대부분 지역 방송 프로그램명이다.
+    억지로 OTHER 로 보내면 정보가 사라진다.
+    """
+    assert st.normalize_category("뉴스 9") == "뉴스 9"
+    assert st.normalize_category("930뉴스") == "930뉴스"
+    assert st.normalize_category(None) is None
+    assert st.normalize_category("   ") is None
+
+
+def test_category_from_link_reads_path():
+    """주소 경로에 분야가 있는 다섯 언론사는 카테고리를 되살린다 (S15P21E105-68)."""
+    assert st.category_from_link(
+        "https://www.donga.com/news/Inter/article/all/1/2/3") == "국제"
+    assert st.category_from_link(
+        "https://www.hani.co.kr/arti/society/society_general/1.html") == "사회"
+    assert st.category_from_link("https://www.mk.co.kr/news/stock/1") == "경제"
+    assert st.category_from_link(
+        "https://www.seoul.co.kr/news/international/2026/09/02/1") == "국제"
+    assert st.category_from_link(
+        "https://www.chosun.com/culture-life/book/2026/09/01/X") == "문화"
+
+
+def test_category_from_link_gives_up_on_numeric_paths():
+    """기사 번호만 있는 여덟 언론사는 못 읽는다. 본문 재수집이 유일한 길이라 비워 둔다."""
+    for link in ("https://www.yna.co.kr/view/AKR1",
+                 "https://www.kmib.co.kr/article/view.asp?arcid=1",
+                 "https://www.etnews.com/20260901000259",
+                 "https://news.sbs.co.kr/news/endPage.do?news_id=N1",
+                 "", None):
+        assert st.category_from_link(link) is None, link
+
+
+def test_resolve_category_falls_back_to_link():
+    """OTHER 는 결측과 같이 본다 (S15P21E105-68).
+
+    이전 적재가 OTHER 로 채운 값을 다시 읽을 때 주소에서 읽을 수 있으면 되살려야 한다.
+    실측으로 이미 쌓인 실시간 기사 3만 5천 건 중 30.7% 가 이 규칙으로 채워졌다.
+    """
+    link = "https://www.mk.co.kr/news/society/1"
+    assert st.resolve_category("OTHER", link) == "사회"
+    assert st.resolve_category(None, link) == "사회"
+    assert st.resolve_category("", link) == "사회"
+    # 값이 있으면 주소보다 값이 먼저다
+    assert st.resolve_category("정치", link) == "정치"
+    # 둘 다 없으면 OTHER
+    assert st.resolve_category(None, "https://www.yna.co.kr/view/AKR1") == "OTHER"
