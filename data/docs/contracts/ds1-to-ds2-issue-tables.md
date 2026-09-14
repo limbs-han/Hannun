@@ -31,6 +31,7 @@ root: EC2 운영 `/home/ubuntu/gold`, 로컬 개발은 각자 gold 루트.
 | 컬럼 | 뜻 |
 |---|---|
 | `issue_local` / `issue_id` | 임시 번호 / 승계되는 서비스 ID |
+| `category` | **이슈 카테고리** — 구성 기사 카테고리(OTHER·빈값 제외) 다수결, 없으면 대표 기사 값. 대표 기사 하나의 값보다 커버리지가 높으니(실측 기사 87%→이슈 99%) 이슈 카테고리는 이 컬럼을 권장 (34) |
 | `representative` | 대표 기사 article_id (이슈 중심 최근접) |
 | `issue_size` · `publishers` · `hot_score` | 규모 · 언론사 수 · 화제성(피드 정렬 키) |
 | `first/last_published_at` | 이슈 시간 범위 (UTC) |
