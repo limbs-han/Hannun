@@ -1,19 +1,34 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { api, type ApiStance, type ArticleItem, type FeedSort, type IssueDetailResponse, type IssueListItem, type SearchIssueItem } from './api'
+import {
+  httpApi,
+  type ApiStance,
+  type ArticleItem,
+  type FeedSort,
+  type IssueDetailResponse,
+  type IssueListItem,
+  type LogEventType,
+  type SearchIssueItem,
+} from './api'
+import { mockApi } from './mock'
 import hannunLogo from './assets/hannun-logo-transparent.png'
 import summitNewsImage from './assets/summit-news.png'
+
+// 기본은 실제 API. 빈 VITE_API_BASE_URL 은 같은 도메인의 /api 를 뜻합니다.
+// 목 데이터는 VITE_USE_MOCK=true 로 명시할 때만 씁니다.
+const api = import.meta.env.VITE_USE_MOCK === 'true' ? mockApi : httpApi
 
 type Issue = { id: number; category: string; title: string; press: number; articles: number; summary: string; time: string; score?: number; briefing?: string[] }
 type Stance = '긍정' | '중립' | '부정'
 type ViewArticle = { id?: number; source: string; headline: string; byline: string; time: string; link?: string; thumbnail?: string | null }
 type ViewGroup = { press: number; articles: number; summary: string; lead: ViewArticle; related: ViewArticle[] }
-type BriefingFact = { text: string; source?: string; url?: string; headline?: string; time?: string }
+type BriefingFact = { text: string }
 type PageName = 'home' | 'detail' | 'search'
 type NavigationState = { __hannun: true; page: PageName; issueId?: number; keyword?: string }
 type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; articles: ViewArticle[] }
 type CalendarDay = { key: string; date: string; label: number | null; selected: boolean; inRange: boolean; isStart: boolean; isEnd: boolean }
 
+/* ---------- API 실패 시 폴백 목업 ---------- */
 const mockIssues: Issue[] = [
   { id: 1, category: '정치', title: '한·미 정상회담, 안보·경제 협력 확대에 공감', press: 25, articles: 322, summary: '정상회담에서 양국은 안보 협력과 경제 현안에 대한 공조 확대 방안을 논의했습니다.', time: '1시간 전' },
   { id: 2, category: '경제', title: '한은, 기준금리 연 2.25% 동결…“성장과 물가 균형 필요”', press: 21, articles: 282, summary: '한국은행은 대내외 경제 여건과 금융시장 상황을 종합적으로 고려해 기준금리를 동결했습니다.', time: '2시간 전' },
@@ -49,9 +64,14 @@ const companionArticles: Record<Stance, ViewArticle[]> = {
   부정: [{ source: '오늘브리프', headline: '{issue}…실행 방안은 왜 빠졌나', byline: '강서현 기자', time: '1시간 전' }, { source: '팩트데일리', headline: '후속 조치의 한계와 현실적인 변수', byline: '임도윤 기자', time: '2시간 전' }, { source: '이슈리포트', headline: '유사 사례와 비교한 실효성 점검', byline: '전하윤 기자', time: '4시간 전' }],
 }
 
-const additionalArticles: ViewArticle[] = [{ source: '현장리포트', headline: '{issue} 관련 현장 반응과 후속 일정', byline: '백지안 기자', time: '5시간 전' }, { source: '뉴스인사이트', headline: '전문가들이 짚은 핵심 변수와 예상 시나리오', byline: '송민준 기자', time: '6시간 전' }, { source: '오늘의쟁점', headline: '발표 이후 남은 쟁점과 추가로 확인할 과제', byline: '노서연 기자', time: '7시간 전' }]
+const additionalArticles: ViewArticle[] = [
+  { source: '현장리포트', headline: '{issue} 관련 현장 반응과 후속 일정', byline: '백지안 기자', time: '5시간 전' },
+  { source: '뉴스인사이트', headline: '전문가들이 짚은 핵심 변수와 예상 시나리오', byline: '송민준 기자', time: '6시간 전' },
+  { source: '오늘의쟁점', headline: '발표 이후 남은 쟁점과 추가로 확인할 과제', byline: '노서연 기자', time: '7시간 전' },
+]
 const viewpointTotals = [{ press: 18, articles: 242 }, { press: 15, articles: 187 }, { press: 12, articles: 134 }]
 
+/* ---------- 상태 ---------- */
 const page = ref<PageName>('home')
 const category = ref('전체')
 const sort = ref('화제성순')
@@ -67,18 +87,7 @@ const recent = ref<string[]>([])
 const relatedSearchResults = ref<Issue[]>([])
 const relatedSearchLoading = ref(false)
 const relatedSearchTerm = ref('')
-const defaultPopularKeywords = [
-  '한국',
-  '재개발 규제 완화',
-  'AI 기본법',
-  '한·미 정상회담',
-  '기준금리 동결',
-  '수도권 집중호우',
-  '민생 법안',
-  '기후 대응',
-  '가계대출',
-  '국제 유가',
-]
+const defaultPopularKeywords = ['한국', '재개발 규제 완화', 'AI 기본법', '한·미 정상회담', '기준금리 동결', '수도권 집중호우', '민생 법안', '기후 대응', '가계대출', '국제 유가']
 const popularKeywords = ref<string[]>([...defaultPopularKeywords])
 const detailData = ref<IssueDetailResponse | null>(null)
 const detailLoading = ref(false)
@@ -109,9 +118,18 @@ let feedObserver: IntersectionObserver | null = null
 let searchObserver: IntersectionObserver | null = null
 let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
 let relatedSearchRequestId = 0
-let sessionId = ''
 
-const feed = computed(() => issues.value)
+// 화제성 상위 2건은 맨 위 블럭으로 빼고, 목록에서는 중복 제거합니다.
+// 3건 미만이면 블럭을 띄우지 않습니다 — 아래 목록이 비어버리기 때문입니다.
+const featuredIssues = computed(() =>
+  issues.value.length > 2
+    ? [...issues.value].sort((a, b) => (b.score ?? b.articles) - (a.score ?? a.articles)).slice(0, 2)
+    : [],
+)
+const feed = computed(() => {
+  const top = new Set(featuredIssues.value.map((issue) => issue.id))
+  return issues.value.filter((issue) => !top.has(issue.id))
+})
 const dateRangeActive = computed(() => Boolean(appliedDateFrom.value && appliedDateTo.value))
 const dateRangeLabel = computed(() => {
   if (dateFromInput.value && dateToInput.value) return `${dateFromInput.value} – ${dateToInput.value}`
@@ -141,8 +159,19 @@ const hasNextViewpointPage = computed(() => {
 })
 const currentStanceArticleCount = computed(() => viewpointCards.value.reduce((sum, card) => sum + card.articleCount, 0))
 
+/* ---------- 매핑 ---------- */
 function mapIssue(item: IssueListItem | SearchIssueItem): Issue {
-  return { id: item.issueId, category: item.category, title: item.factSummary, press: item.pressCount, articles: item.articleCount, summary: item.factSummary, time: '최근 보도', score: 'score' in item ? item.score : undefined, briefing: 'commonFactsBriefing' in item ? item.commonFactsBriefing : undefined }
+  return {
+    id: item.issueId,
+    category: item.category,
+    title: item.factSummary,
+    press: item.pressCount,
+    articles: item.articleCount,
+    summary: item.factSummary,
+    time: '최근 보도',
+    score: 'score' in item ? item.score : undefined,
+    briefing: 'commonFactsBriefing' in item ? item.commonFactsBriefing : undefined,
+  }
 }
 
 function mapArticle(article: ArticleItem): ViewArticle {
@@ -156,9 +185,14 @@ function formatDate(value?: string) {
   return new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
+function sendLog(eventType: LogEventType, payload: Record<string, unknown>) {
+  void Promise.resolve(api.log(eventType, payload)).catch(() => undefined)
+}
+
+/* ---------- 1·6. 피드 ---------- */
 function fallbackFeed() {
   const filtered = category.value === '전체' ? mockIssues : mockIssues.filter((issue) => issue.category === category.value)
-  return [...filtered].sort((a, b) => sort.value === '최신순' ? b.id - a.id : b.articles - a.articles)
+  return [...filtered].sort((a, b) => (sort.value === '최신순' ? b.id - a.id : b.articles - a.articles))
 }
 
 async function loadFeed(reset = false) {
@@ -179,9 +213,22 @@ async function loadFeed(reset = false) {
   } catch {
     if (reset) issues.value = fallbackFeed()
     feedHasNext.value = false
-  } finally { feedLoading.value = false }
+  } finally {
+    feedLoading.value = false
+  }
 }
 
+function loadMoreFeed() {
+  if (!feedLoading.value && feedHasNext.value) {
+    sendLog('SCROLL_FEED', { cursorValue: feedCursorValue.value, cursorId: feedCursorId.value, category: category.value === '전체' ? 'ALL' : category.value, sort: sort.value === '최신순' ? 'latest' : 'trending' })
+    void loadFeed(false)
+  }
+}
+
+async function selectCategory(value: string) { category.value = value; home(); await loadFeed(true) }
+async function selectSort(value: string) { sort.value = value; await loadFeed(true) }
+
+/* ---------- 6. 기간 선택 캘린더 ---------- */
 async function applyDateRange() {
   if (!dateFromInput.value || !dateToInput.value) { dateRangeError.value = '시작일과 종료일을 모두 선택해주세요.'; return }
   if (dateFromInput.value > dateToInput.value) { dateRangeError.value = '시작일은 종료일보다 늦을 수 없습니다.'; return }
@@ -216,35 +263,24 @@ function changeCalendarMonth(offset: number) {
 
 function selectCalendarDate(value: string) {
   dateRangeError.value = ''
-  if (!dateFromInput.value || dateToInput.value) {
-    dateFromInput.value = value
-    dateToInput.value = ''
-    return
-  }
-  if (value < dateFromInput.value) {
-    dateToInput.value = dateFromInput.value
-    dateFromInput.value = value
-    return
-  }
+  if (!dateFromInput.value || dateToInput.value) { dateFromInput.value = value; dateToInput.value = ''; return }
+  if (value < dateFromInput.value) { dateToInput.value = dateFromInput.value; dateFromInput.value = value; return }
   dateToInput.value = value
 }
 
-function loadMoreFeed() {
-  if (!feedLoading.value && feedHasNext.value) {
-    sendLog('SCROLL_FEED', { cursorValue: feedCursorValue.value, cursorId: feedCursorId.value, category: category.value === '전체' ? 'ALL' : category.value, sort: sort.value === '최신순' ? 'latest' : 'trending' })
-    void loadFeed(false)
-  }
+function resetCalendarSelection() {
+  dateFromInput.value = ''
+  dateToInput.value = ''
+  dateRangeError.value = ''
 }
 
-async function selectCategory(value: string) { category.value = value; home(); await loadFeed(true) }
-async function selectSort(value: string) { sort.value = value; await loadFeed(true) }
-
+/* ---------- 2. 브리핑 · 관점 카드 ---------- */
 const briefingFacts = computed<BriefingFact[]>(() => {
   if (detailData.value?.commonFactsBriefing?.length) return detailData.value.commonFactsBriefing.map((text) => ({ text }))
   return [
-    { text: `${selected.value.title} 관련 공식 발표가 있었으며, 핵심 의제와 합의 방향이 공개됐습니다.`, source: '연합뉴스', url: 'https://www.yna.co.kr/', headline: `${selected.value.title}…공식 발표 핵심 내용`, time: '30분 전' },
-    { text: '현재까지 확인된 내용은 관계 기관의 발표와 현장 브리핑을 통해 교차 확인됐습니다.', source: 'KBS', url: 'https://news.kbs.co.kr/', headline: '관계 기관 발표로 확인한 주요 사실과 쟁점', time: '1시간 전' },
-    { text: '구체적인 실행 일정과 세부 방안은 향후 후속 협의를 통해 확정될 예정입니다.', source: '한국일보', url: 'https://www.hankookilbo.com/', headline: '후속 협의에서 결정될 일정과 세부 과제', time: '2시간 전' },
+    { text: `${selected.value.title} 관련 공식 발표가 있었으며, 핵심 의제와 합의 방향이 공개됐습니다.` },
+    { text: '현재까지 확인된 내용은 관계 기관의 발표와 현장 브리핑을 통해 교차 확인됐습니다.' },
+    { text: '구체적인 실행 일정과 세부 방안은 향후 후속 협의를 통해 확정될 예정입니다.' },
   ]
 })
 
@@ -257,18 +293,99 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
   }
   if (!stance.value || !currentGroup.value) return []
   const base = [currentGroup.value.lead, ...currentGroup.value.related].slice(0, 3)
-  return base.map((article, index) => ({ number: String(index + 1).padStart(2, '0'), title: articleTitle(article), description: viewpointNotes[stance.value!][index], press: viewpointTotals[index].press, articleCount: viewpointTotals[index].articles, remainingCount: 2, articles: [article, companionArticles[stance.value!][index], currentGroup.value!.related[Math.min(index + 1, currentGroup.value!.related.length - 1)], additionalArticles[index], additionalArticles[(index + 1) % additionalArticles.length], additionalArticles[(index + 2) % additionalArticles.length]] }))
+  return base.map((article, index) => ({
+    number: String(index + 1).padStart(2, '0'),
+    title: articleTitle(article),
+    description: viewpointNotes[stance.value!][index],
+    press: viewpointTotals[index].press,
+    articleCount: viewpointTotals[index].articles,
+    remainingCount: 2,
+    articles: [article, companionArticles[stance.value!][index], currentGroup.value!.related[Math.min(index + 1, currentGroup.value!.related.length - 1)], additionalArticles[index], additionalArticles[(index + 1) % additionalArticles.length], additionalArticles[(index + 2) % additionalArticles.length]],
+  }))
 })
 
+/* ---------- 언론사 로고 ---------- */
+// src/assets/press/<언론사명>.png|svg|jpg|webp 를 두면 자동으로 잡힙니다.
+const pressLogoFiles = import.meta.glob('./assets/press/*.{png,svg,ico,jpg,jpeg,webp}', { eager: true, import: 'default' }) as Record<string, string>
+
+// 로고 파일이 없는 곳은 이름 첫 글자 배지로 대체합니다.
+const PRESS_COLORS: Record<string, string> = {
+  연합뉴스: '#2b6b8f',
+  한겨레: '#3f3f3c',
+  경향신문: '#4c7c5a',
+  오마이뉴스: '#b0453e',
+  동아일보: '#2f5d9e',
+  조선일보: '#35506e',
+  세계일보: '#a2553f',
+  서울신문: '#5b6bb5',
+  국민일보: '#4a7ba7',
+  매일경제: '#7a6aa8',
+  한국경제: '#3f7f74',
+}
+const FALLBACK_COLORS = ['#2b6b8f', '#4c7c5a', '#b0453e', '#7a6aa8', '#a2553f', '#3f7f74', '#5b6bb5', '#3f3f3c']
+
+function pressLogo(company: string) {
+  const hit = Object.keys(pressLogoFiles).find((path) => path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '') === company)
+  return hit ? pressLogoFiles[hit] : null
+}
+
+function pressInitial(company: string) {
+  return (company || '?').trim().charAt(0)
+}
+
+function pressColor(company: string) {
+  if (PRESS_COLORS[company]) return PRESS_COLORS[company]
+  let sum = 0
+  for (const ch of company || '') sum = (sum + ch.charCodeAt(0)) % 997
+  return FALLBACK_COLORS[sum % FALLBACK_COLORS.length]
+}
+
+function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
+
+function briefingPreview(issue: Issue) {
+  return issue.briefing?.length
+    ? issue.briefing
+    : [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`]
+}
+
+/* ---------- 라우팅 (히스토리) ---------- */
 function applyNavigation(state: NavigationState) {
-  page.value = state.page; searchOpen.value = false; expandedCards.value = []
-  if (state.page === 'detail') { selected.value = issues.value.find((issue) => issue.id === state.issueId) ?? selected.value; stance.value = '중립'; hasRevealedRatio.value = false }
-  else { stance.value = null; hasRevealedRatio.value = false; detailData.value = null; if (state.page === 'search') { keyword.value = state.keyword ?? ''; query.value = keyword.value } }
+  page.value = state.page
+  searchOpen.value = false
+  expandedCards.value = []
+  if (state.page === 'detail') {
+    selected.value = issues.value.find((issue) => issue.id === state.issueId) ?? selected.value
+    stance.value = '중립'
+    hasRevealedRatio.value = false
+  } else {
+    stance.value = null
+    hasRevealedRatio.value = false
+    detailData.value = null
+    if (state.page === 'search') { keyword.value = state.keyword ?? ''; query.value = keyword.value }
+  }
   window.scrollTo(0, 0)
 }
 
 function navigate(state: NavigationState) { applyNavigation(state); window.history.pushState(state, '') }
 function home() { navigate({ __hannun: true, page: 'home' }) }
+
+// 로고 클릭 — 카테고리·정렬·기간·검색어까지 처음 들어온 상태로 되돌립니다.
+// home() 은 selectCategory() 도 쓰므로 따로 둡니다(거기서 초기화하면 카테고리 선택이 바로 풀립니다).
+async function resetToHome() {
+  category.value = '전체'
+  sort.value = '화제성순'
+  query.value = ''
+  keyword.value = ''
+  searchOpen.value = false
+  dateFromInput.value = ''
+  dateToInput.value = ''
+  appliedDateFrom.value = ''
+  appliedDateTo.value = ''
+  dateRangeError.value = ''
+  datePickerOpen.value = false
+  home()
+  await loadFeed(true)
+}
 
 function detail(issue: Issue, referrer: 'MAIN_FEED' | 'SEARCH' = 'MAIN_FEED') {
   selected.value = issue
@@ -287,12 +404,17 @@ async function loadIssueDetail(issueId: number, selectedApiStance: ApiStance, gr
     selected.value = { id: response.issueId, category: response.category, title: response.factSummary, press: response.pressCount, articles: response.articleCount, summary: response.factSummary, time: formatDate(response.lastReportedAt) }
     stance.value = apiToStance[response.selectedStance]
     if (!append) { groupArticles.value = {}; groupCursor.value = {}; expandedCards.value = [] }
-  } catch { if (!append) detailData.value = null }
-  finally { detailLoading.value = false }
+  } catch {
+    if (!append) detailData.value = null
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 async function choose(value: Stance) {
-  stance.value = value; hasRevealedRatio.value = true; expandedCards.value = []
+  stance.value = value
+  hasRevealedRatio.value = true
+  expandedCards.value = []
   sendLog('STANCE_FILTER', { issueId: selected.value.id, stance: stanceToApi[value] })
   await loadIssueDetail(selected.value.id, stanceToApi[value])
 }
@@ -313,9 +435,7 @@ function stanceSegmentClass(value: Stance) {
   }
 }
 
-function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
-function briefingPreview(issue: Issue) { return issue.briefing?.length ? issue.briefing : [issue.summary, `${issue.press}개 언론사의 관련 보도를 바탕으로 핵심 내용을 교차 확인했습니다.`, `관련 기사 ${issue.articles}건에서 공통으로 확인되는 사실과 후속 쟁점을 정리했습니다.`] }
-
+/* ---------- 3. 관점그룹 기사 ---------- */
 async function loadGroupArticles(groupId: number) {
   const cursor = groupCursor.value[groupId]
   if (cursor && !cursor.hasNext) return
@@ -325,12 +445,20 @@ async function loadGroupArticles(groupId: number) {
     const mapped = response.items.map(mapArticle).filter((article) => !existing.some((item) => item.id === article.id))
     groupArticles.value = { ...groupArticles.value, [groupId]: [...existing, ...mapped] }
     groupCursor.value = { ...groupCursor.value, [groupId]: { published: response.nextCursorPublished, articleId: response.nextCursorArticleId, hasNext: response.hasNext } }
-  } catch { groupCursor.value = { ...groupCursor.value, [groupId]: { published: null, articleId: null, hasNext: false } } }
+  } catch {
+    groupCursor.value = { ...groupCursor.value, [groupId]: { published: null, articleId: null, hasNext: false } }
+  }
 }
 
 async function toggleOpinion(card: ViewpointCard) {
-  if (expandedCards.value.includes(card.number)) { expandedCards.value = expandedCards.value.filter((number) => number !== card.number); return }
-  if (card.groupId) { sendLog('EXPAND_GROUP', { issueId: selected.value.id, viewpointGroupId: card.groupId, remainingCount: card.remainingCount }); if (!(groupArticles.value[card.groupId]?.length)) await loadGroupArticles(card.groupId) }
+  if (expandedCards.value.includes(card.number)) {
+    expandedCards.value = expandedCards.value.filter((number) => number !== card.number)
+    return
+  }
+  if (card.groupId) {
+    sendLog('EXPAND_GROUP', { issueId: selected.value.id, viewpointGroupId: card.groupId, remainingCount: card.remainingCount })
+    if (!groupArticles.value[card.groupId]?.length) await loadGroupArticles(card.groupId)
+  }
   expandedCards.value = [...expandedCards.value, card.number]
 }
 
@@ -347,6 +475,7 @@ function handleArticleClick(event: MouseEvent, card: ViewpointCard, article: Vie
   sendLog('VIEW_ARTICLE', { issueId: selected.value.id, viewpointGroupId: card.groupId, articleId: article.id })
 }
 
+/* ---------- 4. 검색 ---------- */
 function clearRelatedSearch() {
   if (relatedSearchTimer) clearTimeout(relatedSearchTimer)
   relatedSearchTimer = null
@@ -367,7 +496,8 @@ function queueRelatedSearch(value = query.value) {
 
   relatedSearchTimer = setTimeout(async () => {
     try {
-      const response = await api.search({ keyword: term, category: category.value === '전체' ? undefined : category.value })
+      // 타이핑 중 호출 — 인기 검색어 집계에서 제외되도록 preview 를 켭니다.
+      const response = await api.search({ keyword: term, category: category.value === '전체' ? undefined : category.value, preview: true })
       if (requestId !== relatedSearchRequestId || relatedSearchTerm.value !== term) return
       relatedSearchResults.value = response.items.map(mapIssue).slice(0, 6)
     } catch {
@@ -385,14 +515,8 @@ function startSearchComposition() {
   relatedSearchRequestId += 1
 }
 
-function handleSearchInput(event: Event) {
-  queueRelatedSearch((event.target as HTMLInputElement).value)
-}
-
-function finishSearchComposition(event: CompositionEvent) {
-  const value = (event.target as HTMLInputElement).value
-  queueRelatedSearch(value)
-}
+function handleSearchInput(event: Event) { queueRelatedSearch((event.target as HTMLInputElement).value) }
+function finishSearchComposition(event: CompositionEvent) { queueRelatedSearch((event.target as HTMLInputElement).value) }
 
 function highlightedSearchText(text: string) {
   const term = relatedSearchTerm.value
@@ -412,17 +536,25 @@ function highlightedSearchText(text: string) {
   return parts.length ? parts : [{ text, matched: false }]
 }
 
-async function openSearch() {
-  searchOpen.value = true; sendLog('OPEN_SEARCH', {})
-  if (query.value.trim()) { queueRelatedSearch(); return }
+// 인기 검색어는 홈 사이드에 상시 노출되므로 진입 시점에 불러옵니다.
+async function loadPopularKeywords() {
   try {
     const response = await api.getSearchSuggestions()
     popularKeywords.value = [...new Set([...response.popularKeywords, ...defaultPopularKeywords])].slice(0, 10)
-  } catch { /* 목업 유지 */ }
+  } catch {
+    /* 목업 유지 */
+  }
+}
+
+async function openSearch() {
+  searchOpen.value = true
+  sendLog('OPEN_SEARCH', {})
+  if (query.value.trim()) queueRelatedSearch()
 }
 
 function clickPopularKeyword(word: string) { sendLog('CLICK_POPULAR_KEYWORD', { keyword: word }); query.value = word; void search(word) }
 function openRelatedIssue(issue: Issue) { searchOpen.value = false; detail(issue, 'SEARCH') }
+
 function removeRecentKeyword(word: string) {
   recent.value = recent.value.filter((item) => item !== word)
   localStorage.setItem('hannun-recent', JSON.stringify(recent.value))
@@ -435,6 +567,7 @@ async function search(word = query.value) {
   localStorage.setItem('hannun-recent', JSON.stringify(recent.value))
   navigate({ __hannun: true, page: 'search', keyword: value })
   await loadSearch(true)
+  void loadPopularKeywords()
 }
 
 async function loadSearch(reset = false) {
@@ -442,7 +575,8 @@ async function loadSearch(reset = false) {
   searchLoading.value = true
   if (reset) { searchCursorValue.value = null; searchCursorId.value = null; searchTopIssues.value = []; searchTopLoading.value = true }
   try {
-    const response = await api.search({ keyword: keyword.value, category: category.value === '전체' ? undefined : category.value, cursorValue: reset ? null : searchCursorValue.value, cursorId: reset ? null : searchCursorId.value })
+    // 사용자가 확정한 검색 — preview:false 로 보내야 인기 검색어에 반영됩니다.
+    const response = await api.search({ keyword: keyword.value, category: category.value === '전체' ? undefined : category.value, cursorValue: reset ? null : searchCursorValue.value, cursorId: reset ? null : searchCursorId.value, preview: false })
     const mapped = response.items.map(mapIssue)
     results.value = reset ? mapped : [...results.value, ...mapped.filter((item) => !results.value.some((existing) => existing.id === item.id))]
     if (reset) searchTopIssues.value = [...mapped].sort((a, b) => b.articles - a.articles).slice(0, 3)
@@ -455,13 +589,20 @@ async function loadSearch(reset = false) {
       searchTopIssues.value = [...results.value].sort((a, b) => b.articles - a.articles).slice(0, 3)
     }
     searchHasNext.value = false
+  } finally {
+    searchLoading.value = false
+    if (reset) searchTopLoading.value = false
   }
-  finally { searchLoading.value = false; if (reset) searchTopLoading.value = false }
 }
 
-function loadMoreSearch() { if (!searchLoading.value && searchHasNext.value) { sendLog('SEARCH_SCROLL', { keyword: keyword.value, cursorValue: searchCursorValue.value, cursorId: searchCursorId.value }); void loadSearch(false) } }
-function sendLog(eventType: Parameters<typeof api.log>[1], payload: Record<string, unknown>) { if (sessionId) void api.log(sessionId, eventType, payload).catch(() => undefined) }
+function loadMoreSearch() {
+  if (!searchLoading.value && searchHasNext.value) {
+    sendLog('SEARCH_SCROLL', { keyword: keyword.value, cursorValue: searchCursorValue.value, cursorId: searchCursorId.value })
+    void loadSearch(false)
+  }
+}
 
+/* ---------- 전역 이벤트 ---------- */
 function handlePopState(event: PopStateEvent) {
   const state = event.state as NavigationState | null
   if (!state?.__hannun) return
@@ -474,130 +615,320 @@ function handleDocumentClick(event: MouseEvent) {
   if (searchOpen.value && !searchBox.value?.contains(event.target as Node)) searchOpen.value = false
   if (datePickerOpen.value && !(event.target as Element).closest('.date-range-filter')) datePickerOpen.value = false
 }
+
 watch(feedSentinel, (element, previous) => { if (previous) feedObserver?.unobserve(previous); if (element) feedObserver?.observe(element) })
 watch(searchSentinel, (element, previous) => { if (previous) searchObserver?.unobserve(previous); if (element) searchObserver?.observe(element) })
 watch(searchOpen, (isOpen) => { if (!isOpen) clearRelatedSearch() })
 
 onMounted(() => {
   try { recent.value = JSON.parse(localStorage.getItem('hannun-recent') || '[]') } catch { recent.value = [] }
-  sessionId = localStorage.getItem('hannun-session-id') || `sess_${crypto.randomUUID()}`
-  localStorage.setItem('hannun-session-id', sessionId)
   window.history.replaceState({ __hannun: true, page: 'home' } satisfies NavigationState, '')
-  window.addEventListener('popstate', handlePopState); document.addEventListener('click', handleDocumentClick)
+  window.addEventListener('popstate', handlePopState)
+  document.addEventListener('click', handleDocumentClick)
   feedObserver = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) loadMoreFeed() }, { rootMargin: '200px' })
   searchObserver = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) loadMoreSearch() }, { rootMargin: '200px' })
   void loadFeed(true)
+  void loadPopularKeywords()
 })
 
-onBeforeUnmount(() => { clearRelatedSearch(); window.removeEventListener('popstate', handlePopState); document.removeEventListener('click', handleDocumentClick); feedObserver?.disconnect(); searchObserver?.disconnect() })
+onBeforeUnmount(() => {
+  clearRelatedSearch()
+  window.removeEventListener('popstate', handlePopState)
+  document.removeEventListener('click', handleDocumentClick)
+  feedObserver?.disconnect()
+  searchObserver?.disconnect()
+})
 </script>
 
 <template>
   <header>
     <div class="head wrap">
       <time>2026년 8월 27일 목요일</time>
-      <button class="logo" aria-label="한눈 홈으로 이동" @click="home">
-        <span class="logo-mark"><img :src="hannunLogo" alt="한눈"></span>
+      <button class="logo" aria-label="한눈 홈으로 이동" @click="resetToHome">
+        <span class="logo-mark"><img :src="hannunLogo" alt="한눈" /></span>
         <span class="logo-tagline">사실 먼저, 관점은 원할 때</span>
       </button>
       <div ref="searchBox" class="searchbox">
-        <form @submit.prevent="search()"><input v-model="query" autocomplete="off" @focus="openSearch" @input="handleSearchInput" @compositionstart="startSearchComposition" @compositionend="finishSearchComposition" placeholder="이슈, 키워드 검색" aria-label="이슈 검색"><button aria-label="검색"><svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="6.5"/><path d="m14.8 14.8 5.2 5.2"/></svg></button></form>
+        <form @submit.prevent="search()">
+          <button aria-label="검색">
+            <svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="10" cy="10" r="6.5" /><path d="m14.8 14.8 5.2 5.2" /></svg>
+          </button>
+          <input
+            v-model="query"
+            autocomplete="off"
+            placeholder="이슈, 키워드 검색"
+            aria-label="이슈 검색"
+            @focus="openSearch"
+            @input="handleSearchInput"
+            @compositionstart="startSearchComposition"
+            @compositionend="finishSearchComposition"
+          />
+        </form>
         <div v-if="searchOpen" class="recent">
           <section v-if="relatedSearchTerm" class="related-search">
             <div><b><strong>{{ relatedSearchTerm }}</strong> 관련 이슈</b><time v-if="relatedSearchLoading">검색 중</time></div>
-            <button v-for="issue in relatedSearchResults" :key="issue.id" @click="openRelatedIssue(issue)"><span>{{ issue.category }}</span><div><b><template v-for="(part, index) in highlightedSearchText(issue.title)" :key="index"><strong v-if="part.matched">{{ part.text }}</strong><template v-else>{{ part.text }}</template></template></b><small>{{ issue.press }}개 언론사 · 관련 기사 {{ issue.articles }}건</small></div></button>
+            <button v-for="issue in relatedSearchResults" :key="issue.id" @click="openRelatedIssue(issue)">
+              <span>{{ issue.category }}</span>
+              <div>
+                <b>
+                  <template v-for="(part, index) in highlightedSearchText(issue.title)" :key="index">
+                    <strong v-if="part.matched">{{ part.text }}</strong><template v-else>{{ part.text }}</template>
+                  </template>
+                </b>
+                <small>{{ issue.press }}개 언론사 · 관련 기사 {{ issue.articles }}건</small>
+              </div>
+            </button>
             <p v-if="!relatedSearchLoading && !relatedSearchResults.length">연관된 이슈가 없습니다.</p>
           </section>
-          <template v-else>
-            <section class="recent-words"><b>최근 검색어</b><p v-if="!recent.length">최근 검색어가 없습니다.</p><div v-for="word in recent" :key="word" class="recent-word"><button class="recent-word-label" @click="search(word)">{{ word }}</button><button class="recent-word-remove" :aria-label="`${word} 최근 검색어 삭제`" @click.stop="removeRecentKeyword(word)">×</button></div></section>
-            <section class="search-trends"><div><b>인기 검색어</b><time>실시간</time></div><button v-for="(word, index) in popularKeywords" :key="word" @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button></section>
-          </template>
+          <section v-else class="recent-words">
+            <b>최근 검색어</b>
+            <p v-if="!recent.length">최근 검색어가 없습니다.</p>
+            <div v-else class="recent-chips">
+              <div v-for="word in recent" :key="word" class="recent-word">
+                <button class="recent-word-label" @click="search(word)">{{ word }}</button>
+                <button class="recent-word-remove" :aria-label="`${word} 최근 검색어 삭제`" @click.stop="removeRecentKeyword(word)">×</button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
-    <nav class="wrap"><button v-for="item in categories" :key="item" :class="{ active: category === item }" @click="selectCategory(item)">{{ item }}</button></nav>
+    <nav class="wrap">
+      <button v-for="item in categories" :key="item" :class="{ active: category === item }" @click="selectCategory(item)">{{ item }}</button>
+    </nav>
   </header>
 
   <main class="wrap" @click="searchOpen = false">
+    <!-- 1·6. 메인 피드 -->
     <template v-if="page === 'home'">
-      <div class="layout"><section class="feed">
-        <div class="title">
-          <div><button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button><button :class="{ active: sort === '최신순' }" @click="selectSort('최신순')">최신순</button></div>
-          <form class="date-range-filter" @submit.prevent="applyDateRange">
-            <span>{{ dateRangeActive ? '기간 기준' : '실시간 기준' }}</span>
-            <button class="date-picker-trigger" type="button" :aria-expanded="datePickerOpen" @click="toggleDatePicker">{{ dateRangeLabel }} <b>▾</b></button>
-            <button v-if="dateRangeActive" class="date-range-reset" type="button" :disabled="feedLoading" @click="clearDateRange">초기화</button>
-            <div v-if="datePickerOpen" class="date-picker" @click.stop>
-              <div class="date-picker-head"><button type="button" aria-label="이전 달" @click="changeCalendarMonth(-1)">‹</button><strong>{{ calendarTitle }}</strong><button type="button" aria-label="다음 달" @click="changeCalendarMonth(1)">›</button></div>
-              <div class="date-picker-week"><span v-for="day in ['일','월','화','수','목','금','토']" :key="day">{{ day }}</span></div>
-              <div class="date-picker-days"><template v-for="day in calendarDays" :key="day.key"><button v-if="day.label" type="button" :class="{ selected: day.selected, 'in-range': day.inRange, start: day.isStart, end: day.isEnd }" @click="selectCalendarDate(day.date)">{{ day.label }}</button><span v-else></span></template></div>
-              <p>{{ dateFromInput ? (dateToInput ? `${dateFromInput}부터 ${dateToInput}까지` : '종료일을 선택해주세요.') : '시작일을 선택해주세요.' }}</p>
-              <div class="date-picker-actions"><button type="button" @click="dateFromInput = ''; dateToInput = ''; dateRangeError = ''">다시 선택</button><button type="submit" :disabled="feedLoading || !dateFromInput || !dateToInput">적용</button></div>
+      <section v-if="featuredIssues.length" class="hero" aria-labelledby="hero-title">
+        <div class="hero-head"><span>TOP ISSUES</span><h2 id="hero-title">화제성 높은 이슈</h2></div>
+        <div class="hero-grid">
+          <a v-for="(issue, index) in featuredIssues" :key="issue.id" :href="`?issue=${issue.id}`" @click.prevent="detail(issue)">
+            <div><em>{{ String(index + 1).padStart(2, '0') }}</em><span>{{ issue.category }}</span></div>
+            <h3>{{ issue.title }}</h3>
+            <div class="hero-brief">
+              <ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol>
             </div>
-            <small v-if="dateRangeError" role="alert">{{ dateRangeError }}</small>
-          </form>
-        </div>
-        <article v-for="issue in feed" :key="issue.id">
-          <a class="feed-card" :href="`?issue=${issue.id}`" @click.prevent="detail(issue)">
-            <div class="feed-article-body">
-              <div class="feed-kicker"><span>{{ issue.category }}</span><small>·　{{ issue.time }}</small></div>
-              <h3>{{ issue.title }}</h3>
-              <div class="feed-meta-row"><div class="feed-meta"><span>{{ issue.press }}개 언론사</span><i>·</i><span>관련 기사 <strong>{{ issue.articles }}건</strong> 묶음</span></div></div>
-            </div>
-            <div class="feed-briefing-preview"><strong>COMMON FACTS<br>공통사실 브리핑</strong><ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol></div>
+            <p>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></p>
           </a>
-        </article>
-        <button v-if="feedHasNext" ref="feedSentinel" class="more" :disabled="feedLoading" @click="loadMoreFeed">{{ feedLoading ? '뉴스를 불러오는 중입니다　○' : '더 많은 뉴스 불러오기' }}</button>
-      </section></div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <section class="feed">
+          <div class="title">
+            <div>
+              <button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button>
+              <button :class="{ active: sort === '최신순' }" @click="selectSort('최신순')">최신순</button>
+            </div>
+            <form class="date-range-filter" @submit.prevent="applyDateRange">
+              <span>{{ dateRangeActive ? '기간 기준' : '실시간 기준' }}</span>
+              <button class="date-picker-trigger" type="button" :aria-expanded="datePickerOpen" @click="toggleDatePicker">{{ dateRangeLabel }} <b>▾</b></button>
+              <button v-if="dateRangeActive" class="date-range-reset" type="button" :disabled="feedLoading" @click="clearDateRange">초기화</button>
+              <div v-if="datePickerOpen" class="date-picker" @click.stop>
+                <div class="date-picker-head">
+                  <button type="button" aria-label="이전 달" @click="changeCalendarMonth(-1)">‹</button>
+                  <strong>{{ calendarTitle }}</strong>
+                  <button type="button" aria-label="다음 달" @click="changeCalendarMonth(1)">›</button>
+                </div>
+                <div class="date-picker-week"><span v-for="day in ['일', '월', '화', '수', '목', '금', '토']" :key="day">{{ day }}</span></div>
+                <div class="date-picker-days" :class="{ ranged: dateFromInput && dateToInput }">
+                  <template v-for="day in calendarDays" :key="day.key">
+                    <button v-if="day.label" type="button" :class="{ selected: day.selected, 'in-range': day.inRange, start: day.isStart, end: day.isEnd }" @click="selectCalendarDate(day.date)">{{ day.label }}</button>
+                    <span v-else></span>
+                  </template>
+                </div>
+                <p>{{ dateFromInput ? (dateToInput ? `${dateFromInput}부터 ${dateToInput}까지` : '종료일을 선택해주세요.') : '시작일을 선택해주세요.' }}</p>
+                <div class="date-picker-actions">
+                  <button type="button" @click="resetCalendarSelection">다시 선택</button>
+                  <button type="submit" :disabled="feedLoading || !dateFromInput || !dateToInput">적용</button>
+                </div>
+              </div>
+              <small v-if="dateRangeError" role="alert">{{ dateRangeError }}</small>
+            </form>
+          </div>
+
+          <article v-for="issue in feed" :key="issue.id">
+            <a class="feed-card" :href="`?issue=${issue.id}`" @click.prevent="detail(issue)">
+              <div class="feed-article-body">
+                <div class="feed-kicker"><span>{{ issue.category }}</span><small>·　{{ issue.time }}</small></div>
+                <h3>{{ issue.title }}</h3>
+                <div class="feed-meta-row">
+                  <div class="feed-meta"><span>{{ issue.press }}개 언론사</span><i>·</i><span>관련 기사 <strong>{{ issue.articles }}건</strong> 묶음</span></div>
+                </div>
+              </div>
+              <div class="feed-briefing-preview">
+                <strong>공통사실 브리핑</strong>
+                <ol><li v-for="fact in briefingPreview(issue)" :key="fact">{{ fact }}</li></ol>
+              </div>
+            </a>
+          </article>
+
+          <div v-if="feedLoading && !feed.length" class="loading">뉴스를 불러오는 중입니다…</div>
+          <div v-else-if="!feed.length" class="empty">
+            <b>표시할 이슈가 없습니다.</b>
+            <p v-if="dateRangeActive">{{ appliedDateFrom }} ~ {{ appliedDateTo }} 기간에 해당하는 이슈가 없습니다. 기간을 넓혀보세요.</p>
+            <p v-else-if="category !== '전체'">‘{{ category }}’ 카테고리에 표시할 이슈가 없습니다. 다른 카테고리를 선택해보세요.</p>
+            <p v-else>아직 수집된 이슈가 없습니다. 잠시 후 다시 확인해주세요.</p>
+          </div>
+
+          <button v-if="feedHasNext" ref="feedSentinel" class="more" :disabled="feedLoading" @click="loadMoreFeed">
+            {{ feedLoading ? '뉴스를 불러오는 중입니다　○' : '더 많은 뉴스 불러오기' }}
+          </button>
+        </section>
+
+        <aside v-if="popularKeywords.length" class="trends" aria-labelledby="trends-title">
+          <div class="trends-head"><span>REALTIME</span><h2 id="trends-title">인기 검색어</h2></div>
+          <ol class="trend-list">
+            <li v-for="(word, index) in popularKeywords" :key="word">
+              <button @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button>
+            </li>
+          </ol>
+        </aside>
+      </div>
     </template>
 
+    <!-- 2·3. 이슈 상세 -->
     <template v-else-if="page === 'detail'">
       <section class="detail">
-        <span>{{ selected.category }}</span><h1>{{ selected.title }}</h1>
+        <span>{{ selected.category }}</span>
+        <h1>{{ selected.title }}</h1>
         <p>최초 보도 {{ formatDate(detailData?.firstReportedAt) || '2026.08.27 08:30' }}　 최근 보도 {{ formatDate(detailData?.lastReportedAt) || '14:20' }}　 {{ selected.press }}개 언론사　 기사 {{ selected.articles }}건</p>
         <div class="stanceBtns detail-stance" :class="{ 'ratio-mode': hasRevealedRatio }" aria-label="관점 선택">
-          <button v-for="item in (['긍정', '중립', '부정'] as Stance[])" :key="item" :class="stanceSegmentClass(item)" :style="{ '--ratio': stancePercent(item) }" :aria-label="hasRevealedRatio ? `${item} ${stancePercent(item)}%` : item" @click="choose(item)"><span v-if="!hasRevealedRatio || stancePercent(item) > 0">{{ item }}</span><b v-if="stancePercent(item) > 0">{{ stancePercent(item) }}%</b></button>
+          <button
+            v-for="item in (['긍정', '중립', '부정'] as Stance[])"
+            :key="item"
+            :class="stanceSegmentClass(item)"
+            :style="{ '--ratio': stancePercent(item) }"
+            :aria-label="hasRevealedRatio ? `${item} ${stancePercent(item)}%` : item"
+            @click="choose(item)"
+          >
+            <span v-if="!hasRevealedRatio || stancePercent(item) > 0">{{ item }}</span>
+            <b v-if="hasRevealedRatio && stancePercent(item) > 0">{{ stancePercent(item) }}%</b>
+          </button>
         </div>
       </section>
 
       <section class="briefing">
-        <div class="briefing-head"><div><label>COMMON FACTS</label><h2>공통사실 브리핑</h2></div><small>{{ briefingFacts.length }}개 핵심 사실</small></div>
-        <ol class="briefing-sentences"><li v-for="fact in briefingFacts" :key="fact.text"><span class="briefing-text">{{ fact.text }}</span></li></ol>
+        <div class="briefing-head">
+          <div><label>COMMON FACTS</label><h2>공통사실 브리핑</h2></div>
+        </div>
+        <ol class="briefing-sentences">
+          <li v-for="fact in briefingFacts" :key="fact.text"><span class="briefing-text">{{ fact.text }}</span></li>
+        </ol>
       </section>
 
-      <section class="view"><div class="stances"><div v-if="stance" class="group"><div class="opinion-stack">
-        <article v-for="card in viewpointCards" :key="card.groupId ?? card.number" class="opinion-card">
-          <div class="opinion-head"><span>VIEWPOINT {{ card.number }}</span><small>{{ card.press }}개 언론사 · 기사 {{ card.articleCount }}건</small></div><h3>{{ card.title }}</h3><p v-if="card.description" class="opinion-summary">{{ card.description }}</p>
-          <div v-if="card.articles.length" class="opinion-news-grid">
-            <a class="latest-news" :href="card.articles[0].link || '#'" target="_blank" rel="noopener noreferrer" @click="handleArticleClick($event, card, card.articles[0])"><img :src="card.articles[0].thumbnail || summitNewsImage" :alt="`${card.articles[0].source} 최신 기사`"><span class="source">{{ card.articles[0].source }}</span><b>{{ articleTitle(card.articles[0]) }}</b><small>{{ card.articles[0].time }} · {{ card.articles[0].byline }}</small></a>
-            <div class="other-news"><a v-for="article in card.articles.slice(1, 4)" :key="article.id ?? `${article.source}-${article.headline}`" :href="article.link || '#'" target="_blank" rel="noopener noreferrer" @click="handleArticleClick($event, card, article)"><span class="source">{{ article.source }}</span><b>{{ articleTitle(article) }}</b><small>{{ article.time }} · {{ article.byline }}</small></a></div>
+      <section class="view">
+        <div class="stances">
+          <div v-if="stance" class="group">
+            <div class="opinion-stack">
+              <article v-for="card in viewpointCards" :key="card.groupId ?? card.number" class="opinion-card">
+                <div class="opinion-head"><span>VIEWPOINT {{ card.number }}</span><small>{{ card.press }}개 언론사 · 기사 {{ card.articleCount }}건</small></div>
+                <h3>{{ card.title }}</h3>
+                <p v-if="card.description" class="opinion-summary">{{ card.description }}</p>
+
+                <div v-if="card.articles.length" class="opinion-news-grid">
+                  <a class="latest-news" :href="card.articles[0].link || '#'" target="_blank" rel="noopener noreferrer" @click="handleArticleClick($event, card, card.articles[0])">
+                    <img :src="card.articles[0].thumbnail || summitNewsImage" :alt="`${card.articles[0].source} 최신 기사`" />
+                    <span class="source">
+                      <img v-if="pressLogo(card.articles[0].source)" class="press-logo" :src="pressLogo(card.articles[0].source)!" :alt="`${card.articles[0].source} 로고`" />
+                      <i v-else class="press-logo" :style="{ background: pressColor(card.articles[0].source) }" aria-hidden="true">{{ pressInitial(card.articles[0].source) }}</i>
+                      {{ card.articles[0].source }}
+                    </span>
+                    <b>{{ articleTitle(card.articles[0]) }}</b>
+                    <small>{{ card.articles[0].time }} · {{ card.articles[0].byline }}</small>
+                  </a>
+                  <div class="other-news">
+                    <a
+                      v-for="article in card.articles.slice(1, 4)"
+                      :key="article.id ?? `${article.source}-${article.headline}`"
+                      :href="article.link || '#'"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      @click="handleArticleClick($event, card, article)"
+                    >
+                      <span class="source">
+                        <img v-if="pressLogo(article.source)" class="press-logo" :src="pressLogo(article.source)!" :alt="`${article.source} 로고`" />
+                        <i v-else class="press-logo" :style="{ background: pressColor(article.source) }" aria-hidden="true">{{ pressInitial(article.source) }}</i>
+                        {{ article.source }}
+                      </span>
+                      <b>{{ articleTitle(article) }}</b>
+                      <small>{{ article.time }} · {{ article.byline }}</small>
+                    </a>
+                  </div>
+                </div>
+
+                <div v-if="expandedCards.includes(card.number)" class="expanded-news">
+                  <a
+                    v-for="article in card.articles.slice(4)"
+                    :key="article.id ?? `${article.source}-${article.headline}`"
+                    :href="article.link || '#'"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    @click="handleArticleClick($event, card, article)"
+                  >
+                    <span class="source">
+                        <img v-if="pressLogo(article.source)" class="press-logo" :src="pressLogo(article.source)!" :alt="`${article.source} 로고`" />
+                        <i v-else class="press-logo" :style="{ background: pressColor(article.source) }" aria-hidden="true">{{ pressInitial(article.source) }}</i>
+                        {{ article.source }}
+                      </span>
+                    <div><b>{{ articleTitle(article) }}</b><small>{{ article.time }} · {{ article.byline }}</small></div>
+                    <em>↗</em>
+                  </a>
+                  <button v-if="card.groupId && groupCursor[card.groupId]?.hasNext" class="opinion-more" @click="loadGroupArticles(card.groupId)">기사 더 불러오기 ↓</button>
+                </div>
+
+                <button v-if="card.remainingCount > 0 || expandedCards.includes(card.number)" class="opinion-more" @click="toggleOpinion(card)">
+                  {{ expandedCards.includes(card.number) ? '관련 기사 접기 ↑' : `관련 기사 ${card.remainingCount}건 더보기 ↓` }}
+                </button>
+              </article>
+
+              <button v-if="hasNextViewpointPage" class="coverage-more" @click="loadNextViewpointPage">다음 관점 묶음 불러오기 ›</button>
+              <p v-else-if="detailLoading" class="guide">관점 묶음을 불러오는 중입니다.</p>
+              <p v-else class="guide">현재 관점 기사 {{ currentStanceArticleCount }}건</p>
+            </div>
           </div>
-          <div v-if="expandedCards.includes(card.number)" class="expanded-news">
-            <a v-for="article in card.articles.slice(4)" :key="article.id ?? `${article.source}-${article.headline}`" :href="article.link || '#'" target="_blank" rel="noopener noreferrer" @click="handleArticleClick($event, card, article)"><span class="source">{{ article.source }}</span><div><b>{{ articleTitle(article) }}</b><small>{{ article.time }} · {{ article.byline }}</small></div><em>↗</em></a>
-            <button v-if="card.groupId && groupCursor[card.groupId]?.hasNext" class="opinion-more" @click="loadGroupArticles(card.groupId)">기사 더 불러오기 ↓</button>
-          </div>
-          <button v-if="card.remainingCount > 0 || expandedCards.includes(card.number)" class="opinion-more" @click="toggleOpinion(card)">{{ expandedCards.includes(card.number) ? '관련 기사 접기 ↑' : `관련 기사 ${card.remainingCount}건 더보기 ↓` }}</button>
-        </article>
-        <button v-if="hasNextViewpointPage" class="coverage-more" @click="loadNextViewpointPage">다음 관점 묶음 불러오기 ›</button><p v-else-if="detailLoading" class="guide">관점 묶음을 불러오는 중입니다.</p><p v-else class="guide">현재 관점 기사 {{ currentStanceArticleCount }}건</p>
-      </div></div></div></section>
+        </div>
+      </section>
     </template>
 
+    <!-- 4-2. 검색 결과 -->
     <template v-else>
-      <section class="results"><label>SEARCH RESULTS</label><h1>‘{{ keyword }}’ 검색 결과</h1><p>개별 기사가 아닌 관련 이슈를 모아 보여드립니다.</p>
+      <section class="results">
+        <label>SEARCH RESULTS</label>
+        <h1>‘{{ keyword }}’ 검색 결과</h1>
+        <p>개별 기사가 아닌 관련 이슈를 모아 보여드립니다.</p>
+
         <section class="search-top-issues" aria-labelledby="search-top-title">
           <div class="search-top-head"><div><span>TOP ISSUES</span><h2 id="search-top-title">관련 주요 뉴스</h2></div></div>
           <div class="search-top-grid">
-            <a v-for="(issue, index) in searchTopIssues" :key="issue.id" :href="`?issue=${issue.id}`" @click.prevent="detail(issue, 'SEARCH')"><div><em>{{ String(index + 1).padStart(2, '0') }}</em><span>{{ issue.category }}</span></div><h3>{{ issue.title }}</h3><p>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></p></a>
+            <a v-for="(issue, index) in searchTopIssues" :key="issue.id" :href="`?issue=${issue.id}`" @click.prevent="detail(issue, 'SEARCH')">
+              <div><em>{{ String(index + 1).padStart(2, '0') }}</em><span>{{ issue.category }}</span></div>
+              <h3>{{ issue.title }}</h3>
+              <p>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></p>
+            </a>
             <div v-for="index in (searchTopLoading ? 3 : 0)" :key="`top-loading-${index}`" class="search-top-skeleton" aria-hidden="true"></div>
           </div>
         </section>
+
         <div class="search-list-head"><b>검색 결과</b></div>
         <div class="list">
-        <article v-for="issue in results" :key="issue.id" class="search-result-item" @click="detail(issue, 'SEARCH')"><span>{{ issue.category }}</span><div><h3>{{ issue.title }}</h3><small>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></small></div><b aria-hidden="true">›</b></article>
-        <div v-if="!results.length && !searchLoading" class="empty"><b>검색 결과가 없습니다.</b><p>다른 키워드로 다시 검색해보세요.</p></div>
-        <button v-if="searchHasNext" ref="searchSentinel" class="more" :disabled="searchLoading" @click="loadMoreSearch">{{ searchLoading ? '검색 결과를 불러오는 중입니다　○' : '검색 결과 더보기' }}</button>
-      </div></section>
+          <article v-for="issue in results" :key="issue.id" class="search-result-item" @click="detail(issue, 'SEARCH')">
+            <span>{{ issue.category }}</span>
+            <div><h3>{{ issue.title }}</h3><small>{{ issue.press }}개 언론사 · 관련 기사 <strong>{{ issue.articles }}건</strong></small></div>
+            <b aria-hidden="true">›</b>
+          </article>
+          <div v-if="!results.length && !searchLoading" class="empty"><b>검색 결과가 없습니다.</b><p>다른 키워드로 다시 검색해보세요.</p></div>
+          <button v-if="searchHasNext" ref="searchSentinel" class="more" :disabled="searchLoading" @click="loadMoreSearch">
+            {{ searchLoading ? '검색 결과를 불러오는 중입니다　○' : '검색 결과 더보기' }}
+          </button>
+        </div>
+      </section>
     </template>
   </main>
-  <footer><div class="wrap"><b>한눈</b><span>복잡한 뉴스의 핵심을 한눈에</span><small>© 2026 HANNUN NEWS</small></div></footer>
+
+  <footer>
+    <div class="wrap"><b>한눈</b><span>복잡한 뉴스의 핵심을 한눈에</span><small>© 2026 HANNUN NEWS</small></div>
+  </footer>
 </template>
