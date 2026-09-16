@@ -1,25 +1,22 @@
-"""gold 이슈 피드 DAG (S15P21E105-69).
+"""gold 이슈 피드 DAG — 매시 :27 :42 :57 (S15P21E105-69).
 
-DS 사슬 산출물을 BE 가 받는 모양으로 합쳐 gold 에 쌓는다.
+DS 사슬 산출물을 BE 가 받는 모양으로 합쳐 gold 에 쌓는다. DS2 관점 결과도 여기서 붙는다.
 
-**사슬 트리거를 뺐다 (2026-09-11).** ds_chain 이 스스로 15분마다 돌게 바뀌어
-(S15P21E105-102) 여기서 또 부르면 중복이다. reset_dag_run 도 함께 뺐다 — 같은 시각의
-15분 실행을 지우고 다시 만들 위험이 있었다.
+**시각을 이렇게 고른 이유.** DS 쪽이 하이브리드 주기다(S15P21E105-102). ds_chain 이
+매시 :05 에 전체 재군집을 하고 :18 쯤 끝나며, ds_assign 이 :20 :35 :50 에 새 기사를 기존
+이슈에 붙이고 2~3분 걸린다. 둘 다 끝에 DS2 내보내기까지 돌아 ds_output 이 15분마다
+갱신된다. gold 는 각 배정이 끝난 뒤, 다음 배정 전에 돌아야 쓰는 중인 parquet 를 읽지
+않는다. 배정이 flock 으로 최대 4분 기다릴 수 있어 :25 는 빡빡하고 :27 이면 여유가 있다.
 
-**돌 시각은 아직 정하지 못했다.** 사슬 실행이 15~17분인데 주기가 15분이라 끝난 다음 초에
-다음 실행이 시작된다. 쉬는 틈이 없어 gold 가 끼어들면 사슬이 덮어쓰는 중인 parquet 를
-읽는다. 창은 window_start 하나를 계속 덮으므로 한 창 뒤처져 읽는 방법도 없다.
+**시간표로 붙인 것은 타협이다.** 정석은 배정 DAG 끝에서 이 DAG 를 트리거하는 이어받기다.
+DS 가 주기를 실측으로 조정하는 중이라(15분 → 매시 → 하이브리드) 지금 묶으면 양쪽이 같이
+흔들린다. DS 주기가 확정되면 트리거로 바꾼다.
 
-DS 쪽에서 둘 중 하나가 정해지면 그때 스케줄을 붙인다.
-
-- 사슬 주기를 20분 이상으로 늘려 틈을 만든다
-- 사슬이 산출물을 임시 폴더에 쓴 뒤 이름을 바꿔 읽는 쪽이 언제나 온전한 것을 본다
-
-그때까지는 꺼진 채 두고 손으로 돌린다. DS 입력 내려주기는 article_ingest DAG 가 15분마다
-한다(S15P21E105-118).
+사슬 트리거는 2026-09-11 에 뺐다. ds_chain 이 스스로 돌게 되어 중복이었다.
+DS 입력 내려주기는 article_ingest DAG 가 15분마다 한다(S15P21E105-118).
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pendulum
 from airflow import DAG
@@ -34,10 +31,10 @@ KST = pendulum.timezone("Asia/Seoul")
 with DAG(
     dag_id="ds_daily",
     start_date=datetime(2026, 9, 10, tzinfo=KST),
-    schedule=None,  # 돌 시각 미정 — 위 docstring 참고
+    schedule="27,42,57 * * * *",  # 각 배정 뒤, 다음 배정 전
     catchup=False,
     max_active_runs=1,
-    is_paused_upon_creation=True,  # 사슬이 쉬는 틈이 정해질 때까지 꺼 둔다
+    is_paused_upon_creation=False,
     tags=["ds", "gold"],
 ) as dag:
     # DS 산출물 세 표를 BE 가 받는 모양으로 합쳐 gold 에 쌓는다. 창을 주지 않으면 방금
@@ -45,6 +42,9 @@ with DAG(
     gold = BashOperator(
         task_id="gold_issue_feed",
         pool=SPARK_POOL,
+        # 실측 29초. 길어져 다음 배정(:35)과 겹치기 전에 끊는다. 덮어쓰기는 커밋 전
+        # 중단이면 옛 파티션이 그대로라 안전하다
+        execution_timeout=timedelta(minutes=5),
         bash_command=(
             "spark-submit --master 'local[*]' --driver-memory 2g "
             "/opt/airflow/jobs/gold_issue_feed.py"
