@@ -16,6 +16,7 @@ DS gold 와 ds_output 은 로컬 경로다. DS 코드가 HDFS 를 쓰지 못해 
 
 import argparse
 import datetime as dt
+import glob
 import logging
 import os
 
@@ -45,29 +46,63 @@ def today_kst(now=None):
     return str((now or dt.datetime.now(dt.timezone.utc)).astimezone(KST).date())
 
 
-def read_ds2(spark):
-    """DS2 분석 결과를 기사당 한 줄로 펼쳐 읽는다. 파일이 없으면 None.
+def ds2_file_for(window, ds_gold=None, ds_output=None):
+    """창과 짝인 DS2 파일 하나. 없으면 None.
+
+    이슈 번호는 창마다 다시 배정되므로 다른 창을 본 DS2 결과는 붙지 않는다. 짝은
+    시각으로 본다 — 창 폴더가 마지막으로 쓰인 뒤에 만들어진 가장 최근 파일이다. 사슬이
+    같은 창을 다시 쓰면 폴더 시각이 앞서 나가고 옛 DS2 파일은 자연히 걸러진다.
+
+    ds_output 의 모든 파일을 읽던 때는 6일치 옛 기사 1만 4천 건이 "우리 표에 없음"
+    경고에 찍혀 실제 어긋남이 묻혔다 (2026-09-16 실측). DS2 가 파일 이름을 창 이름으로
+    맞춰 주면 이름으로 바꾼다.
+    """
+    ds_gold = ds_gold or DS_GOLD
+    ds_output = ds_output or DS_OUTPUT
+    marker = os.path.join(ds_gold, "issue_summary", f"window_start={window}")
+    # 폴더와 그 안 parquet 중 늦은 시각. Spark 는 덮어쓸 때 파일을 지우고 새로 만들어
+    # 폴더 시각도 따라가지만, 어느 쪽이 갱신되든 잡히게 둘 다 본다
+    since = max([os.path.getmtime(marker)] +
+                [os.path.getmtime(f) for f in glob.glob(os.path.join(marker, "*"))])         if os.path.isdir(marker) else 0
+    candidates = sorted(
+        (os.path.getmtime(path), path)
+        for path in glob.glob(os.path.join(ds_output, "*.jsonl"))
+        if os.path.getmtime(path) >= since)
+    return candidates[-1][1] if candidates else None
+
+
+def _blank_to_null(col):
+    """빈 문자열을 결측으로 본다.
+
+    coalesce 는 null 만 뒤 값으로 바꾼다. DS2 가 commonFactsBriefing 을 "" 로 주면 그게
+    값이 있는 것으로 보여 대표 기사 본문으로 채우는 길이 막혔고, 발행기에서 이슈 178개가
+    필수 필드 비움으로 잡혔다 (2026-09-16 실측). 계약은 "값이 비어 있으면 그 자리는
+    비운 채" 이므로 "" 도 비어 있는 것으로 흡수한다.
+    """
+    return F.when(F.trim(col) == "", None).otherwise(col)
+
+
+def read_ds2(spark, window):
+    """창과 짝인 DS2 결과를 기사당 한 줄로 펼쳐 읽는다. 짝인 파일이 없으면 None.
 
     DS2 는 BE 스펙 모양의 JSONL 을 둔다. 이슈 하나가 한 줄이고 기사가 배열이라, 붙이려면
     배열을 펼쳐야 한다. 붙이는 키는 clusterId 와 link 다.
     """
-    if not os.path.isdir(DS_OUTPUT) or not [f for f in os.listdir(DS_OUTPUT)
-                                            if f.endswith(".jsonl")]:
-        logger.info("ds_output 에 파일이 없어 관점 값을 비워 둔다: %s", DS_OUTPUT)
+    path = ds2_file_for(window)
+    if path is None:
+        logger.info("창 %s 과 짝인 DS2 파일이 없어 관점 값을 비워 둔다: %s", window, DS_OUTPUT)
         return None
-    raw = spark.read.json(f"file://{DS_OUTPUT}/*.jsonl")
-    # 같은 창을 다시 돌려 파일이 겹치면 계산 시각이 늦은 것을 쓴다
-    newest = raw.groupBy("clusterId").agg(F.max("clusteredAt").alias("clusteredAt"))
-    raw = raw.join(newest, ["clusterId", "clusteredAt"])
+    logger.info("DS2 파일 %s", os.path.basename(path))
+    raw = spark.read.json(f"file://{path}")
     article = F.explode("articles").alias("article")
     return (raw.select(F.col("clusterId").alias("cluster_id"),
-                       F.col("factSummary").alias("ds2_fact_summary"),
-                       F.col("commonFactsBriefing").alias("ds2_briefing"),
-                       F.col("category").alias("ds2_category"), article)
+                       _blank_to_null(F.col("factSummary")).alias("ds2_fact_summary"),
+                       _blank_to_null(F.col("commonFactsBriefing")).alias("ds2_briefing"),
+                       _blank_to_null(F.col("category")).alias("ds2_category"), article)
             .select("cluster_id", "ds2_fact_summary", "ds2_briefing", "ds2_category",
                     F.col("article.link").alias("link"),
-                    F.col("article.viewpointGroupLabel").alias("ds2_label"),
-                    F.col("article.stance").alias("ds2_stance"))
+                    _blank_to_null(F.col("article.viewpointGroupLabel")).alias("ds2_label"),
+                    _blank_to_null(F.col("article.stance")).alias("ds2_stance"))
             .dropDuplicates(["cluster_id", "link"]))
 
 
@@ -148,8 +183,8 @@ def build(spark, day, window=None):
             .withColumn("dt", F.lit(day)))
 
 
-def build_with_ds2(spark, day, window=None):
-    return merge_ds2(build(spark, day, window), read_ds2(spark))
+def build_with_ds2(spark, day, window):
+    return merge_ds2(build(spark, day, window), read_ds2(spark, window))
 
 
 def write(df, day, window=None):
