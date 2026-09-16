@@ -207,11 +207,12 @@ nav .active:after{content:'';position:absolute;bottom:-1px;left:12px;right:12px;
 .opinion-news-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
 .latest-news{display:block;text-decoration:none;color:inherit;border-radius:8px;padding:8px;margin:-8px;transition:background .12s ease}
 .latest-news:hover{background:var(--bg-soft)}
-.latest-news img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:var(--tag)}
+.latest-news>img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:var(--tag)}
 .source{display:inline-flex;align-items:center;gap:5px;font:500 11px var(--font);color:var(--ink-2);background:var(--tag);border-radius:4px;padding:2px 7px 2px 3px}
 .latest-news .source{margin:10px 0 0}
 /* 언론사 로고 — 파일이 있으면 이미지, 없으면 이름 첫 글자 배지 */
-.press-logo{flex:none;width:16px;height:16px;border-radius:3px;object-fit:cover;background:var(--line)}
+.source{white-space:nowrap}
+.press-logo,.latest-news .press-logo{flex:none;width:16px;height:16px;min-width:16px;aspect-ratio:auto;border-radius:3px;object-fit:contain;background:transparent}
 i.press-logo{display:grid;place-items:center;font:700 9.5px/1 var(--font);font-style:normal;color:#fff;letter-spacing:-.02em}
 .latest-news b{display:block;margin:7px 0 5px;font:600 14.5px/1.5 var(--font);letter-spacing:-.014em;word-break:keep-all}
 .latest-news:hover b{color:var(--blue)}
