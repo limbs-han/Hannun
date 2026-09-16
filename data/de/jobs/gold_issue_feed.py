@@ -141,6 +141,21 @@ def build(spark, day, window=None):
     registry = spark.read.parquet(f"file://{DS_GOLD}/issue_registry")
     articles = spark.read.parquet(f"file://{DS_GOLD}/articles")
 
+    # 관점 분석 대상 기사만 담는다 — DS2(export_ds2_jsonl.py)와 같은 두 조건이다.
+    # 표 형식(structured) 기사와 정제 본문이 빈 기사는 DS2 가 관점을 계산하지 않아 gold 에
+    # 넣으면 관점 값이 null 로 남고 BE 필수 필드 점검에서 걸린다 (2026-09-16 실측 244건,
+    # 이슈 15개는 통째로). 발행 대상 = 관점 분석 대상으로 기준을 맞춘다.
+    # structured 가 null 이면 DS2 처럼 표 형식으로 본다
+    analyzable = (
+        spark.read.parquet(f"file://{DS_GOLD}/issue_quality")
+        .where(~F.coalesce(F.col("structured"), F.lit(True)))
+        .select("article_id")
+        .join(spark.read.parquet(f"file://{DS_GOLD}/clean")
+              .where(F.trim(F.coalesce(F.col("content_clean"), F.lit(""))) != "")
+              .select("article_id"), "article_id")
+        .distinct())
+    registry = registry.join(analyzable, "article_id")
+
     # 이슈 번호는 창마다 다시 배정된다 — 같은 번호가 창에 따라 다른 사건을 가리키므로
     # 창을 섞으면 이슈에 딴 기사가 붙는다. 창 하나를 통째로 쓴다. 실측으로 섞었을 때
     # DS2 가 48% 만 붙었고 창을 맞추면 99% 붙었다
@@ -150,6 +165,8 @@ def build(spark, day, window=None):
     if summary.rdd.isEmpty():
         # 빈 표로 gold 를 덮으면 이미 발행한 이슈가 사라진다
         raise SystemExit(f"DS 산출물에 창 {window} 이 없다")
+    if registry.rdd.isEmpty():
+        raise SystemExit(f"창 {window} 에 관점 분석 대상 기사가 없다")
     logger.info("DS 창 %s", window)
 
     rep = articles.select(
