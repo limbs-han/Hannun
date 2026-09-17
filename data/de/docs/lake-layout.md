@@ -23,7 +23,9 @@
 - `/lake/iceberg/silver/news` — 전환 중인 Iceberg 테이블 `ice.silver.news` (S15P21E105-126).
   옛 파케이를 그대로 둔 채 옆에 짓고 건수를 대조한 뒤 읽는 쪽을 옮긴다. 하둡 카탈로그는
   테이블 위치가 곧 정체성이라 나중에 못 옮기므로 처음부터 최종 자리로 둔다.
-  변환 잡에 `SILVER_FORMAT=iceberg` 를 주면 이쪽에 쓴다. 기본값은 파케이다
+  변환 잡은 `SILVER_WRITE`(parquet·iceberg·both), 읽는 잡은 `SILVER_READ`(parquet·iceberg)로
+  대상을 정한다. 둘 다 기본값이 파케이다. 전환 순서는 both 로 같이 쓰기 → 읽기 옮기기 →
+  파케이 쓰기 끊기이고, 각 단계에서 환경변수를 되돌리면 원상복구된다
 - `/lake/_checkpoints/<잡이름>/` — 스트리밍 체크포인트. 데이터가 아니며,
   지우면 해당 잡이 토픽 처음부터 재적재한다 (bronze 에 중복 발생)
 

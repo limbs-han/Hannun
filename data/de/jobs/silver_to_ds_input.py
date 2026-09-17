@@ -20,15 +20,14 @@ DS 파이프라인(hannun-ingest)은 로컬 파일만 읽고 형식은 .json/.js
   spark-submit --master local[*] jobs/silver_to_ds_input.py --bulk         # silver 전체
   spark-submit --master local[*] jobs/silver_to_ds_input.py --bulk 2019-01-01 2019-12-31
 
-SILVER_FORMAT=iceberg 를 주면 파케이 대신 Iceberg 테이블에서 읽는다 (S15P21E105-126 3단계).
+SILVER_READ=iceberg 를 주면 파케이 대신 Iceberg 테이블에서 읽는다 (S15P21E105-126).
 `--sync` 의 뒤처진 날짜 판정 방식도 함께 바뀐다 — 아래 partition_signatures 참고.
 기본값은 parquet 이라 아무것도 주지 않으면 지금과 같다. 두 방식이 나란히 있는 것은
 전환 기간 되돌리기를 위한 것이고 5단계에서 파케이 쪽을 지운다.
 
-**이 스위치를 4단계 전에 켜지 말 것.** 4단계까지는 15분 배치가 파케이에만 쓰므로
-Iceberg 테이블이 전체 재구축 시점에 멈춰 있다. 읽는 쪽만 먼저 켜면 DS 입력에 새 기사가
-들어가지 않고, 에러도 나지 않아 알아채기 어렵다. 쓰는 쪽이 Iceberg 에 증분을 반영하게
-된 뒤에 함께 켠다.
+**먼저 변환 잡을 SILVER_WRITE=both 로 돌려 두어야 한다.** 그러지 않으면 Iceberg 테이블이
+전체 재구축 시점에 멈춰 있고, 읽는 쪽만 옮기면 DS 입력에 새 기사가 들어가지 않는다.
+에러도 나지 않아 알아채기 어렵다.
 """
 
 import argparse
@@ -53,7 +52,7 @@ SILVER = f"{LAKE}/silver/news"
 OUT_ROOT = os.environ.get("DS_INPUT_ROOT", "/opt/airflow/ds_input")
 KST = dt.timezone(dt.timedelta(hours=9))
 
-USE_ICEBERG = os.environ.get("SILVER_FORMAT", "parquet") == "iceberg"
+USE_ICEBERG = os.environ.get("SILVER_READ", "parquet") == "iceberg"
 TABLE = os.environ.get("SILVER_TABLE", f"{iceberg_conf.CATALOG}.silver.news")
 # 내려준 날짜별 지문을 적어 두는 곳. ds_input 안에 두면 안 된다 — DS 리더가 .json 으로
 # 끝나는 파일을 기사 파일로 착각해 읽는다. 컨테이너 재생성에도 남는 state 볼륨에 둔다

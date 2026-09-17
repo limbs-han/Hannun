@@ -21,6 +21,12 @@ from airflow.operators.bash import BashOperator
 # 한 번에 하나만 돌게 한다 (대기줄 만들기는 infra/README 참고)
 SPARK_POOL = "spark_local"
 
+# silver 를 다루는 두 잡에 Iceberg jar 을 올린다 (S15P21E105-126). SILVER_WRITE·SILVER_READ
+# 가 parquet 이면 잡이 Iceberg 설정을 붙이지 않아 이 jar 은 쓰이지 않는다. 그래도 항상
+# 붙이는 이유는 스위치를 켜는 순간 DAG 를 고치지 않아도 되게 하려는 것이다. jar 은
+# ivy-cache 볼륨에 있어 해석에 몇 초만 든다
+ICEBERG = "--packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.1 "
+
 with DAG(
     dag_id="article_ingest",
     start_date=datetime(2026, 9, 1),
@@ -44,6 +50,7 @@ with DAG(
         pool=SPARK_POOL,
         bash_command=(
             "spark-submit --master 'local[*]' --driver-memory 3g "
+            + ICEBERG +
             "/opt/airflow/jobs/bronze_to_silver.py"
         ),
     )
@@ -56,6 +63,7 @@ with DAG(
         pool=SPARK_POOL,
         bash_command=(
             "spark-submit --master 'local[*]' --driver-memory 2g "
+            + ICEBERG +
             "/opt/airflow/jobs/silver_to_ds_input.py --sync"
         ),
     )
