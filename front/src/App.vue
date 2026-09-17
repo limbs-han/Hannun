@@ -343,10 +343,18 @@ function pressColor(company: string) {
   return FALLBACK_COLORS[sum % FALLBACK_COLORS.length]
 }
 
-// 위쪽에 보이지 않는 기사 수 = 이미 불러왔지만 접힌 것 + 아직 안 불러온 것.
-// remainingCount 만 보면 전부 불러온 뒤 접었을 때 버튼이 사라져 다시 펼칠 수 없습니다.
+// 서버에서 아직 받아올 수 있는 기사 수.
+// hasNext 가 false 면 remainingCount 가 남아 있어도 더 가져올 수 없습니다.
+// 이 값을 안 보고 remainingCount 만 믿으면, 실제로는 다 나왔는데 더보기 버튼이 남습니다.
+function pendingFromServer(card: ViewpointCard) {
+  if (card.groupId && groupCursor.value[card.groupId]?.hasNext === false) return 0
+  return card.remainingCount
+}
+
+// 위쪽에 보이지 않는 기사 수 = 이미 불러왔지만 접힌 것 + 아직 서버에 남은 것.
+// 앞엣것을 빼먹으면 전부 불러온 뒤 접었을 때 버튼이 사라져 다시 펼칠 수 없습니다.
 function hiddenCount(card: ViewpointCard) {
-  return Math.max(card.articles.length - card.previewCount, 0) + card.remainingCount
+  return Math.max(card.articles.length - card.previewCount, 0) + pendingFromServer(card)
 }
 
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
@@ -479,7 +487,7 @@ function visibleExtraArticles(card: ViewpointCard) {
 }
 
 function canRevealMore(card: ViewpointCard) {
-  return visibleExtraArticles(card).length < extraArticles(card).length || card.remainingCount > 0
+  return visibleExtraArticles(card).length < extraArticles(card).length || pendingFromServer(card) > 0
 }
 
 // 노출 목표치를 채울 만큼 서버에서 당겨옵니다(서버 페이지 크기가 10 보다 작을 수 있어서).
@@ -749,8 +757,7 @@ onBeforeUnmount(() => {
 
   <main class="wrap" @click="searchOpen = false">
     <!-- 1·6. 메인 피드 -->
-    <template v-if="page === 'home'">
-      <section v-if="featuredIssues.length" class="hero" aria-labelledby="hero-title">
+    <section v-if="page === 'home' && featuredIssues.length" class="hero" aria-labelledby="hero-title">
         <div class="hero-head"><span>TOP ISSUES</span><h2 id="hero-title">화제성 높은 이슈</h2></div>
         <div class="hero-grid">
           <a v-for="(issue, index) in featuredIssues" :key="issue.id" :href="`?issue=${issue.id}`" @click.prevent="detail(issue)">
@@ -764,8 +771,9 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <div class="layout">
-        <section class="feed">
+    <!-- 홈과 상세가 같은 2단 레이아웃을 공유합니다(오른쪽 인기 검색어). -->
+    <div v-if="page !== 'search'" class="layout" :class="{ 'is-detail': page === 'detail' }">
+        <section v-if="page === 'home'" class="feed">
           <div class="title">
             <div>
               <button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button>
@@ -827,19 +835,7 @@ onBeforeUnmount(() => {
           </button>
         </section>
 
-        <aside v-if="popularKeywords.length" class="trends" aria-labelledby="trends-title">
-          <div class="trends-head"><span>REALTIME</span><h2 id="trends-title">인기 검색어</h2></div>
-          <ol class="trend-list">
-            <li v-for="(word, index) in popularKeywords" :key="word">
-              <button @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button>
-            </li>
-          </ol>
-        </aside>
-      </div>
-    </template>
-
-    <!-- 2·3. 이슈 상세 -->
-    <template v-else-if="page === 'detail'">
+      <div v-else class="detail-main">
       <section class="detail">
         <span>{{ selected.category }}</span>
         <h1>{{ selected.title }}</h1>
@@ -940,10 +936,20 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
-    </template>
+      </div>
+
+        <aside v-if="popularKeywords.length" class="trends" aria-labelledby="trends-title">
+          <div class="trends-head"><span>REALTIME</span><h2 id="trends-title">인기 검색어</h2></div>
+          <ol class="trend-list">
+            <li v-for="(word, index) in popularKeywords" :key="word">
+              <button @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button>
+            </li>
+          </ol>
+        </aside>
+    </div>
 
     <!-- 4-2. 검색 결과 -->
-    <template v-else>
+    <template v-if="page === 'search'">
       <section class="results">
         <label>SEARCH RESULTS</label>
         <h1>‘{{ keyword }}’ 검색 결과</h1>
