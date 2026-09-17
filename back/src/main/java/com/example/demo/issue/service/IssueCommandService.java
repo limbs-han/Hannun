@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -26,6 +27,8 @@ public class IssueCommandService {
 
     private static final Duration ACTIVE_WINDOW = Duration.ofDays(2);
     private static final Duration LOCK_TTL = Duration.ofMinutes(5);
+
+    private static final Map<String, String> CATEGORY_MERGE = Map.of("산업", "경제");
 
     private final IssueRepository issueRepository;
     private final ArticleQueryService articleQueryService;
@@ -47,6 +50,7 @@ public class IssueCommandService {
     })
     public void applyClusteringResult(Long clusterId, String category, String factSummary,
                                        List<String> commonFactsBriefing, OffsetDateTime clusteredAt) {
+        category = normalizeCategory(category);
         ArticleClusterAggregate aggregate = articleQueryService.aggregateByClusterId(clusterId);
         if (aggregate.articleCount() == null || aggregate.articleCount() == 0) {
             // 클러스터가 참조하는 링크가 전부 우리 DB에 없는 경우(백필 누락분 등) - 재시도해도 똑같이
@@ -71,6 +75,10 @@ public class IssueCommandService {
 
         issueRepository.save(new Issue(clusterId, category, factSummary, commonFactsBriefing,
                 pressCount, articleCount, aggregate.firstReportedAt(), aggregate.lastReportedAt(), clusteredAt));
+    }
+
+    private String normalizeCategory(String category) {
+        return CATEGORY_MERGE.getOrDefault(category, category);
     }
 
     @Scheduled(cron = "0 */15 * * * *")
