@@ -58,7 +58,7 @@ def missing_required(message):
     """BE 필수 필드 중 빈 것을 돌려준다. 목업 없이 보낼 수 있는지 미리 보는 데 쓴다."""
     missing = [k for k in ("clusterId", "category", "factSummary",
                            "commonFactsBriefing", "clusteredAt")
-               if message.get(k) in (None, "")]
+               if message.get(k) in (None, "", [])]
     for article in message["articles"]:
         for key in ("link", "viewpointGroupLabel", "stance"):
             if article.get(key) in (None, "") and f"articles[].{key}" not in missing:
@@ -81,7 +81,7 @@ def build_message(rows, mock=False):
     if mock:
         # 목업임이 화면과 캡처에서 드러나게 한다
         summary = f"{summary} (샘플 요약)"
-        briefing = f"{briefing} (샘플 브리핑)"
+        briefing = list(briefing or []) + ["(샘플 브리핑)"]
     return {
         "clusterId": head["cluster_id"],
         "category": head["category"],

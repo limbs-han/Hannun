@@ -9,7 +9,7 @@ UTC = dt.timezone.utc
 def _row(cluster_id, link, minute, label=None, stance=None):
     return {
         "cluster_id": cluster_id, "category": "정치",
-        "fact_summary": "제목", "common_facts_briefing": "본문 앞부분",
+        "fact_summary": "제목", "common_facts_briefing": ["첫째 사실", "둘째 사실"],
         "clustered_at": dt.datetime(2026, 9, 8, 19, 43, 37, tzinfo=UTC),
         "link": link, "viewpoint_group_label": label, "stance": stance,
         "publisher_id": "yonhap",
@@ -45,13 +45,26 @@ def test_mock_flag_fills_viewpoints_with_visible_marker_and_one_stance_per_group
     rows = [_row(7, f"https://a/{i}", i) for i in range(8)]
     msg = pc.build_message(rows, mock=True)
     assert "(샘플 요약)" in msg["factSummary"]
-    assert "(샘플 브리핑)" in msg["commonFactsBriefing"]
+    assert msg["commonFactsBriefing"] == ["첫째 사실", "둘째 사실", "(샘플 브리핑)"]
     per_group = {}
     for a in msg["articles"]:
         assert a["viewpointGroupLabel"].startswith("[샘플]")
         assert a["stance"] in ("positive", "neutral", "negative")
         per_group.setdefault(a["viewpointGroupLabel"], set()).add(a["stance"])
     assert all(len(v) == 1 for v in per_group.values())  # 한 관점 그룹은 성향 하나
+
+
+def test_briefing_goes_out_as_a_list_of_sentences():
+    # BE 가 List<String> 으로 받는다. DS2 가 문장 리스트를 주므로 합치지 않고 그대로 넘긴다
+    msg = pc.build_message([_row(7, "https://a/1", 0)])
+    assert msg["commonFactsBriefing"] == ["첫째 사실", "둘째 사실"]
+
+
+def test_missing_required_counts_empty_briefing_list_as_missing():
+    # [] 는 (None, "") 에 안 걸려 값이 있는 것으로 보였다
+    rows = [_row(7, "https://a/1", 0, label="A-1 경제적 기대 효과", stance="positive")]
+    rows[0]["common_facts_briefing"] = []
+    assert pc.missing_required(pc.build_message(rows)) == ["commonFactsBriefing"]
 
 
 class FakeProducer:
