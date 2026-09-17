@@ -42,7 +42,9 @@ const mockIssues: Issue[] = [
   { id: 10, category: '세계', title: '우크라이나 재건 회의, 국제사회 주요 합의 발표', press: 14, articles: 46, summary: '국제사회가 우크라이나 재건을 위한 재정 지원과 장기 협력 방안을 발표했습니다.', time: '9시간 전' },
 ]
 
-const categories = ['정치', '경제', '사회', 'IT', '세계']
+// BE 가 내려주는 category 값과 글자 단위로 일치해야 합니다 — 그대로 쿼리 파라미터로 나갑니다.
+// '산업'은 '경제'로 통합하기로 해서 탭에 두지 않습니다(실제 통합은 수집·적재 단계에서 처리).
+const categories = ['정치', '경제', '사회', '국제', '문화', 'IT/과학', '연예', '스포츠']
 const stanceToApi: Record<Stance, ApiStance> = { 긍정: 'positive', 중립: 'neutral', 부정: 'negative' }
 const apiToStance: Record<ApiStance, Stance> = { positive: '긍정', neutral: '중립', negative: '부정' }
 
