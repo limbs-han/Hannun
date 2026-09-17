@@ -9,6 +9,16 @@ article_id 중복을 제거해 /lake/silver/news/dt=<한국날짜>/ parquet 로 
       세 소스 전체를 다시 읽어 silver 를 통째로 재구축 (초기 적재, 규칙 변경 시)
   spark-submit --master local[*] jobs/bronze_to_silver.py [--ingest-dates 2026-09-07 ...]
       지정 적재일(기본 오늘·어제)의 실시간분만 읽어 해당 dt 파티션만 덮어쓴다 (15분 DAG)
+
+SILVER_FORMAT=iceberg 를 주면 파케이 대신 Iceberg 테이블(ice.silver.news)에 쓴다
+(S15P21E105-126 2단계). 기본값은 parquet 이라 아무것도 주지 않으면 지금과 같다.
+전환은 옛 파케이를 그대로 둔 채 옆에 새 테이블을 짓고 건수를 대조한 뒤에 한다.
+
+  SILVER_FORMAT=iceberg spark-submit --master local[*] --driver-memory 3g \
+    --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.1 \
+    jobs/bronze_to_silver.py --full
+
+증분(MERGE)은 4단계 몫이다. 지금은 iceberg 로 증분을 돌리면 멈춘다.
 """
 
 import argparse
@@ -29,6 +39,7 @@ from jobs.silver_transform import (  # noqa: E402
     FIELDS, NULLABLE, UnknownPublisher, from_bigkinds_line, from_dataset_row, from_realtime_message,
 )
 
+import iceberg_conf  # noqa: E402
 import metrics  # noqa: E402
 
 logger = logging.getLogger("bronze_to_silver")
@@ -36,6 +47,11 @@ logger = logging.getLogger("bronze_to_silver")
 LAKE = os.environ.get("LAKE_ROOT", "hdfs://namenode:8020/lake")
 SILVER = f"{LAKE}/silver/news"
 SCHEMA = StructType([StructField(f, StringType(), f in NULLABLE) for f in FIELDS])
+
+# 파케이가 기본이다. 옛 경로를 그대로 두고 옆에 Iceberg 테이블을 짓는 동안, 아무 설정도
+# 주지 않은 잡은 지금과 똑같이 돌아야 한다 (S15P21E105-126)
+USE_ICEBERG = os.environ.get("SILVER_FORMAT", "parquet") == "iceberg"
+TABLE = os.environ.get("SILVER_TABLE", f"{iceberg_conf.CATALOG}.silver.news")
 
 
 class _CountByKey(AccumulatorParam):
@@ -101,10 +117,18 @@ def dedup(df):
     return df.withColumn("_rn", row_number().over(order)).where(col("_rn") == 1).drop("_rn")
 
 
+def read_silver(spark):
+    return spark.table(TABLE) if USE_ICEBERG else spark.read.parquet(SILVER)
+
+
 def write(df):
     # 중복 제거 셔플은 article_id 기준 200조각이라 그대로 쓰면 조각마다 날짜별 파일이 생겨
     # dt 당 파일 195개가 됐다 (2026-09-07 실측 54만 파일). dt 로 재분배해 dt 당 1개로 쓴다
-    df.repartition("dt").write.mode("overwrite").partitionBy("dt").parquet(SILVER)
+    df = df.repartition("dt")
+    if USE_ICEBERG:
+        df.writeTo(TABLE).partitionedBy(col("dt")).createOrReplace()
+        return
+    df.write.mode("overwrite").partitionBy("dt").parquet(SILVER)
 
 
 def run_full(spark):
@@ -133,7 +157,7 @@ def _incremental_lines(spark, dts, dropped, unknown):
     ]
     lines += [metrics.line("silver_unknown_publisher_rows", count, {"publisher": name})
               for name, count in unknown.value.items()]
-    newest = (spark.read.parquet(SILVER).where(col("dt").isin(dts))
+    newest = (read_silver(spark).where(col("dt").isin(dts))
               .agg({"published": "max"}).collect()[0][0])
     if newest:
         seen = dt.datetime.strptime(newest, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
@@ -169,8 +193,11 @@ if __name__ == "__main__":
     ap.add_argument("--full", action="store_true", help="세 소스 전체 재구축")
     ap.add_argument("--ingest-dates", nargs="+", help="반영할 bronze/news 적재일 (기본 오늘·어제)")
     args = ap.parse_args()
+    # 증분을 Iceberg 에 쓰는 것은 MERGE 를 붙이는 4단계 몫이다. 지금 돌리면 테이블을
+    # 통째로 갈아버리므로(createOrReplace) 여기서 막는다
+    assert not (USE_ICEBERG and not args.full), "iceberg 증분은 아직 없다 — --full 로만 쓴다"
 
-    spark = (
+    builder = (
         SparkSession.builder.appName("bronze_to_silver")
         # local 모드의 파이썬 워커도 crawler·backfill·jobs 를 임포트해야 한다
         .config("spark.executorEnv.PYTHONPATH", ROOT)
@@ -178,13 +205,17 @@ if __name__ == "__main__":
         # (localCheckpoint) 태스크만 먼저 돌고 HDFS 태스크는 재스케줄 신호가 없어 영원히
         # 대기하는 local 모드 교착이 생긴다 (2026-09-07 실측)
         .config("spark.locality.wait", "0")
-        .getOrCreate()
     )
+    # Iceberg 설정은 쓸 때만 붙인다. 전역에 두면 jar 이 없는 순간 다른 잡까지 세션 생성에서
+    # 죽는다 (iceberg_conf 주석 참고)
+    spark = (iceberg_conf.configure(builder) if USE_ICEBERG else builder).getOrCreate()
+    if USE_ICEBERG:
+        spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {TABLE.rsplit('.', 1)[0]}")
     if args.full:
         run_full(spark)
     else:
         today = dt.date.today()
         dates = args.ingest_dates or [str(today), str(today - dt.timedelta(days=1))]
         run_incremental(spark, dates)
-    logger.info("silver 총 %s건", f"{spark.read.parquet(SILVER).count():,}")
+    logger.info("silver 총 %s건", f"{read_silver(spark).count():,}")
     spark.stop()
