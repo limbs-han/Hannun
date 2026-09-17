@@ -92,8 +92,13 @@ def _briefing_column(raw):
     """
     col = F.col("commonFactsBriefing")
     if isinstance(raw.schema["commonFactsBriefing"].dataType, T.StringType):
+        # 배열이던 줄이 섞여 있으면 스파크가 필드 전체를 문자열로 읽고 그 줄은
+        # '["첫째","둘째"]' 라는 JSON 글자가 된다. 되돌려 배열로 만든다.
+        # 파싱에 실패하면 원래 문장이므로 원소 하나로 감싼다.
         # null 을 그냥 감싸면 [null] 이 되어 값이 있는 것으로 보인다
-        col = F.when(col.isNull() | (F.trim(col) == ""), None).otherwise(F.array(col))
+        parsed = F.from_json(col, T.ArrayType(T.StringType()))
+        col = (F.when(col.isNull() | (F.trim(col) == ""), None)
+                .otherwise(F.coalesce(parsed, F.array(col))))
     return F.when(F.size(col) <= 0, None).otherwise(col)
 
 
