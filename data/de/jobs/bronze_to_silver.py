@@ -10,15 +10,21 @@ article_id 중복을 제거해 /lake/silver/news/dt=<한국날짜>/ parquet 로 
   spark-submit --master local[*] jobs/bronze_to_silver.py [--ingest-dates 2026-09-07 ...]
       지정 적재일(기본 오늘·어제)의 실시간분만 읽어 해당 dt 파티션만 덮어쓴다 (15분 DAG)
 
-SILVER_FORMAT=iceberg 를 주면 파케이 대신 Iceberg 테이블(ice.silver.news)에 쓴다
-(S15P21E105-126 2단계). 기본값은 parquet 이라 아무것도 주지 않으면 지금과 같다.
-전환은 옛 파케이를 그대로 둔 채 옆에 새 테이블을 짓고 건수를 대조한 뒤에 한다.
+저장 형식은 환경변수 둘로 정한다 (S15P21E105-126). 둘 다 기본값이 parquet 이라 아무것도
+주지 않으면 지금과 같다.
 
-  SILVER_FORMAT=iceberg spark-submit --master local[*] --driver-memory 3g \
+  SILVER_WRITE  parquet | iceberg | both   어디에 쓸지
+  SILVER_READ   parquet | iceberg          증분이 기존 행을 어디서 읽을지
+
+전환 순서는 아래와 같다. 읽기와 쓰기를 따로 켜는 이유가 여기 있다.
+
+  1. SILVER_WRITE=both    두 곳에 같이 쓴다. 파케이가 최신으로 남아 언제든 되돌릴 수 있다
+  2. SILVER_READ=iceberg  읽는 쪽을 옮긴다. 1 없이 이것만 하면 굳은 테이블을 읽게 된다
+  3. SILVER_WRITE=iceberg 파케이 쓰기를 끊는다. 되돌리려면 파케이 재구축이 필요하다
+
+  SILVER_WRITE=iceberg spark-submit --master local[*] --driver-memory 3g \
     --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.1 \
     jobs/bronze_to_silver.py --full
-
-증분(MERGE)은 4단계 몫이다. 지금은 iceberg 로 증분을 돌리면 멈춘다.
 """
 
 import argparse
@@ -50,8 +56,17 @@ SCHEMA = StructType([StructField(f, StringType(), f in NULLABLE) for f in FIELDS
 
 # 파케이가 기본이다. 옛 경로를 그대로 두고 옆에 Iceberg 테이블을 짓는 동안, 아무 설정도
 # 주지 않은 잡은 지금과 똑같이 돌아야 한다 (S15P21E105-126)
-USE_ICEBERG = os.environ.get("SILVER_FORMAT", "parquet") == "iceberg"
 TABLE = os.environ.get("SILVER_TABLE", f"{iceberg_conf.CATALOG}.silver.news")
+
+# 읽기와 쓰기를 따로 켠다. 한 스위치로 묶으면 단계적 전환이 안 된다 — 쓰기를 both 로 둔
+# 채 읽기만 옮겨야 파케이가 최신으로 남아 되돌리기가 환경변수 한 줄이 된다 (S15P21E105-126)
+WRITE = os.environ.get("SILVER_WRITE", "parquet")   # parquet | iceberg | both
+READ = os.environ.get("SILVER_READ", "parquet")     # parquet | iceberg
+assert WRITE in ("parquet", "iceberg", "both"), f"SILVER_WRITE 값이 이상하다: {WRITE}"
+assert READ in ("parquet", "iceberg"), f"SILVER_READ 값이 이상하다: {READ}"
+WRITE_ICEBERG = WRITE in ("iceberg", "both")
+WRITE_PARQUET = WRITE in ("parquet", "both")
+USE_ICEBERG = WRITE_ICEBERG or READ == "iceberg"  # Iceberg 설정을 붙여야 하는가
 
 
 class _CountByKey(AccumulatorParam):
@@ -118,17 +133,30 @@ def dedup(df):
 
 
 def read_silver(spark):
-    return spark.table(TABLE) if USE_ICEBERG else spark.read.parquet(SILVER)
+    return spark.table(TABLE) if READ == "iceberg" else spark.read.parquet(SILVER)
 
 
-def write(df):
-    # 중복 제거 셔플은 article_id 기준 200조각이라 그대로 쓰면 조각마다 날짜별 파일이 생겨
-    # dt 당 파일 195개가 됐다 (2026-09-07 실측 54만 파일). dt 로 재분배해 dt 당 1개로 쓴다
+def write(df, replace_all):
+    """중복 제거가 끝난 결과를 쓴다. replace_all 이면 테이블을 통째로, 아니면 들어온 dt 만.
+
+    중복 제거 셔플은 article_id 기준 200조각이라 그대로 쓰면 조각마다 날짜별 파일이 생겨
+    dt 당 파일 195개가 됐다 (2026-09-07 실측 54만 파일). dt 로 재분배해 dt 당 1개로 쓴다.
+
+    both 일 때 두 번 쓰므로 미리 담아 둔다. 담지 않으면 bronze 를 두 번 읽고 중복 제거도
+    두 번 한다.
+    """
     df = df.repartition("dt")
-    if USE_ICEBERG:
-        df.writeTo(TABLE).partitionedBy(col("dt")).createOrReplace()
-        return
-    df.write.mode("overwrite").partitionBy("dt").parquet(SILVER)
+    if WRITE == "both":
+        df = df.localCheckpoint()
+    if WRITE_ICEBERG:
+        writer = df.writeTo(TABLE)
+        if replace_all:
+            writer.partitionedBy(col("dt")).createOrReplace()
+        else:
+            # 들어온 dt 파티션만 갈아 끼운다. 파케이의 dynamic 덮어쓰기와 같은 동작이다
+            writer.overwritePartitions()
+    if WRITE_PARQUET:
+        df.write.mode("overwrite").partitionBy("dt").parquet(SILVER)
 
 
 def run_full(spark):
@@ -140,7 +168,7 @@ def run_full(spark):
         .union(read_news(spark, dropped["news"], unknown))
         .union(read_bigkinds(spark, dropped["bigkinds"], unknown))
     )
-    write(dedup(to_df(spark, rdd)))
+    write(dedup(to_df(spark, rdd)), replace_all=True)
     logger.info("제외 건수: %s", {k: v.value for k, v in dropped.items()})
     logger.info("미등록 언론사 제외: %s", unknown.value)
 
@@ -178,11 +206,11 @@ def run_incremental(spark, ingest_dates):
     try:
         # 덮어쓸 파티션의 기존 행을 메모리에 먼저 고정한다. 읽는 경로에 쓰기를 막는 Spark
         # 검사를 통과시키고, 덮어쓰기 도중 원본이 지워져도 읽기가 끊기지 않게 하기 위함
-        existing = spark.read.parquet(SILVER).where(col("dt").isin(dts)).localCheckpoint()
+        existing = read_silver(spark).where(col("dt").isin(dts)).localCheckpoint()
     except AnalysisException:  # silver 가 아직 없음 (full 이전)
         existing = spark.createDataFrame([], SCHEMA)
     spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
-    write(dedup(new.union(existing)))
+    write(dedup(new.union(existing)), replace_all=False)
     logger.info("dt %s 갱신, 실시간 제외 %d건, 미등록 언론사 제외: %s", sorted(dts), dropped.value, unknown.value)
     metrics.push("bronze_to_silver", lambda: _incremental_lines(spark, dts, dropped, unknown))
 
@@ -193,9 +221,7 @@ if __name__ == "__main__":
     ap.add_argument("--full", action="store_true", help="세 소스 전체 재구축")
     ap.add_argument("--ingest-dates", nargs="+", help="반영할 bronze/news 적재일 (기본 오늘·어제)")
     args = ap.parse_args()
-    # 증분을 Iceberg 에 쓰는 것은 MERGE 를 붙이는 4단계 몫이다. 지금 돌리면 테이블을
-    # 통째로 갈아버리므로(createOrReplace) 여기서 막는다
-    assert not (USE_ICEBERG and not args.full), "iceberg 증분은 아직 없다 — --full 로만 쓴다"
+
 
     builder = (
         SparkSession.builder.appName("bronze_to_silver")

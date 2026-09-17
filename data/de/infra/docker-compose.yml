@@ -81,6 +81,10 @@ services:
       HADOOP_USER_NAME: root
       # 적재 잡(kafka_to_bronze)이 읽음 — .env 에서 주입, 로컬 미설정이면 빈 값
       KAFKA_BROKER: ${KAFKA_BROKER:-}
+      # silver 저장 형식 전환 스위치 (S15P21E105-126). 되돌리기가 .env 한 줄이 되도록
+      # 잡 코드가 아니라 여기로 뺀다. 미설정이면 파케이라 지금 동작과 같다
+      SILVER_WRITE: ${SILVER_WRITE:-parquet}
+      SILVER_READ: ${SILVER_READ:-parquet}
       # Spark 클라이언트 기본 설정 폴더. 복제 수를 1 로 못 박는다 (S15P21E105-105)
       SPARK_CONF_DIR: /opt/spark-conf
       # 파이프라인 지표를 보낼 B 서버 Pushgateway (S15P21E105-79). 미설정이면 잡이

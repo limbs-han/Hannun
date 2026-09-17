@@ -19,10 +19,20 @@ DS 파이프라인(hannun-ingest)은 로컬 파일만 읽고 형식은 .json/.js
   spark-submit --master local[*] jobs/silver_to_ds_input.py --sync         # 뒤처진 날짜만
   spark-submit --master local[*] jobs/silver_to_ds_input.py --bulk         # silver 전체
   spark-submit --master local[*] jobs/silver_to_ds_input.py --bulk 2019-01-01 2019-12-31
+
+SILVER_READ=iceberg 를 주면 파케이 대신 Iceberg 테이블에서 읽는다 (S15P21E105-126).
+`--sync` 의 뒤처진 날짜 판정 방식도 함께 바뀐다 — 아래 partition_signatures 참고.
+기본값은 parquet 이라 아무것도 주지 않으면 지금과 같다. 두 방식이 나란히 있는 것은
+전환 기간 되돌리기를 위한 것이고 5단계에서 파케이 쪽을 지운다.
+
+**먼저 변환 잡을 SILVER_WRITE=both 로 돌려 두어야 한다.** 그러지 않으면 Iceberg 테이블이
+전체 재구축 시점에 멈춰 있고, 읽는 쪽만 옮기면 DS 입력에 새 기사가 들어가지 않는다.
+에러도 나지 않아 알아채기 어렵다.
 """
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import logging
 import os
@@ -32,6 +42,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.utils import AnalysisException
 
+import iceberg_conf
 import metrics
 
 logger = logging.getLogger("silver_to_ds_input")
@@ -40,6 +51,12 @@ LAKE = os.environ.get("LAKE_ROOT", "hdfs://namenode:8020/lake")
 SILVER = f"{LAKE}/silver/news"
 OUT_ROOT = os.environ.get("DS_INPUT_ROOT", "/opt/airflow/ds_input")
 KST = dt.timezone(dt.timedelta(hours=9))
+
+USE_ICEBERG = os.environ.get("SILVER_READ", "parquet") == "iceberg"
+TABLE = os.environ.get("SILVER_TABLE", f"{iceberg_conf.CATALOG}.silver.news")
+# 내려준 날짜별 지문을 적어 두는 곳. ds_input 안에 두면 안 된다 — DS 리더가 .json 으로
+# 끝나는 파일을 기사 파일로 착각해 읽는다. 컨테이너 재생성에도 남는 state 볼륨에 둔다
+STATE_FILE = os.environ.get("DS_INPUT_STATE", "/opt/airflow/state/ds_input_export.json")
 
 # dt 는 파티션 이름일 뿐이라 기사 레코드에는 넣지 않는다. DS 계약(article_v1)에 없는 필드다
 PARTITION_COLUMN = "dt"
@@ -90,11 +107,30 @@ def staging_path(final):
     return f"{final}.tmp.{os.getpid()}"
 
 
+def read_all(spark):
+    """silver 전체. 저장 형식에 따라 읽는 방법만 다르다."""
+    return spark.table(TABLE) if USE_ICEBERG else spark.read.parquet(SILVER)
+
+
+def read_day(spark, day):
+    """하루치. 그 날짜가 없으면 None.
+
+    파케이는 폴더가 없으면 예외가 나고, Iceberg 는 없는 날짜를 걸러도 예외 없이 빈
+    결과가 된다. 어느 쪽이든 "없으면 None" 으로 맞춘다.
+    """
+    if USE_ICEBERG:
+        rows = spark.table(TABLE).where(col(PARTITION_COLUMN) == day)
+        return rows if rows.take(1) else None
+    try:
+        return spark.read.parquet(f"{SILVER}/dt={day}")
+    except AnalysisException:
+        return None
+
+
 def export_day(spark, day, out_root):
     """하루치를 <out_root>/<연도>/<날짜>.jsonl 로 쓴다. 파티션이 없으면 None."""
-    try:
-        rows = spark.read.parquet(f"{SILVER}/dt={day}")
-    except AnalysisException:
+    rows = read_day(spark, day)
+    if rows is None:
         logger.info("silver 에 없는 날짜, 건너뜀: %s", day)
         return None
 
@@ -181,13 +217,61 @@ def stale_days(partition_mtimes, out_root):
     return sorted(stale)
 
 
+def partition_signatures(spark):
+    """Iceberg 테이블의 날짜별 지문. {날짜: 지문}.
+
+    파케이 시절에는 폴더 변경 시각을 봤다. Iceberg 는 대장이 파일 목록을 관리해서
+    폴더 시각이 논리적 변경과 무관해지므로 그 방법이 통하지 않는다. 대신 대장에 적힌
+    현재 데이터 파일 목록과 각 파일의 행수를 지문으로 쓴다.
+
+    이 값은 대장만 읽어서 나오므로 데이터를 훑지 않는다. 파일이 새로 쓰이면 경로가 바뀌고
+    Iceberg 는 파일을 제자리에서 고치지 않으므로, 행수가 같은 내용 수정도 지문이 달라진다.
+    파일 합치기를 하면 내용이 같아도 지문이 바뀌어 한 번 더 내려주게 되는데, 합치기는
+    사람이 돌리는 작업이라 그 비용은 예측 가능하다.
+    """
+    rows = (spark.table(f"{TABLE}.files")
+            .selectExpr(f"partition.{PARTITION_COLUMN} as dt", "file_path", "record_count")
+            .collect())
+    per_day = {}
+    for row in rows:
+        per_day.setdefault(row["dt"], []).append(f"{row['file_path']}:{row['record_count']}")
+    return {day: hashlib.sha256("\n".join(sorted(items)).encode()).hexdigest()[:16]
+            for day, items in per_day.items()}
+
+
+def load_state(path):
+    """지난번에 내려준 날짜별 지문. 없거나 깨졌으면 빈 값."""
+    try:
+        with open(path, encoding="utf-8") as state:
+            return json.load(state)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def save_state(path, state):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    staging = f"{path}.tmp.{os.getpid()}"
+    with open(staging, "w", encoding="utf-8") as out:
+        json.dump(state, out)
+    os.replace(staging, path)
+
+
+def stale_by_signature(signatures, state):
+    """지문이 달라진 날짜. 기록이 없으면 전부 대상이다.
+
+    첫 실행은 전체를 다시 내린다. 파케이에서 내려준 파일이 이미 있어도 새 테이블 기준으로
+    맞추는 것이 확실하고, 전체 내려주기는 한 번에 7분이라 감당할 수 있다 (실측).
+    """
+    return sorted(day for day, sig in signatures.items() if state.get(day) != sig)
+
+
 def export_bulk(spark, out_root, days=None, start=None, end=None):
     """지정한 날짜들을 한 번에 읽어 날짜별로 쓴다. 아무것도 안 주면 silver 전부.
 
     날짜마다 따로 읽는 export_day 는 준비 비용이 커서 하루에 1분씩 걸린다. 2,800일이면
     이틀이 넘어 15분 파이프라인이 그만큼 멈춘다. 한 번에 읽으면 7분이다(실측).
     """
-    df = spark.read.parquet(SILVER)
+    df = read_all(spark)
     if days is not None:
         df = df.where(col(PARTITION_COLUMN).isin(days))
     elif start and end:
@@ -216,18 +300,26 @@ if __name__ == "__main__":
                     help="내려준 파일이 silver 보다 뒤처진 날짜만 골라 내린다 (매일 실행용)")
     args = ap.parse_args()
 
-    spark = (
+    builder = (
         SparkSession.builder.appName("silver_to_ds_input")
         .config("spark.locality.wait", "0")  # bronze_to_silver 와 같은 이유 (local 모드 교착)
-        .getOrCreate()
     )
+    # Iceberg 설정은 쓸 때만 붙인다 (iceberg_conf 주석 참고)
+    spark = (iceberg_conf.configure(builder) if USE_ICEBERG else builder).getOrCreate()
     try:
         if args.sync:
-            stale = stale_days(silver_partition_mtimes(spark), OUT_ROOT)
+            signatures = partition_signatures(spark) if USE_ICEBERG else None
+            state = load_state(STATE_FILE) if USE_ICEBERG else None
+            stale = (stale_by_signature(signatures, state) if USE_ICEBERG
+                     else stale_days(silver_partition_mtimes(spark), OUT_ROOT))
             if stale:
                 logger.info("뒤처진 날짜 %d일: %s%s", len(stale), stale[:5],
                             " ..." if len(stale) > 5 else "")
                 export_bulk(spark, OUT_ROOT, days=stale)
+                if USE_ICEBERG:
+                    # 내려준 날짜만 기록한다. 중간에 실패하면 남은 날짜는 다음 실행이 다시 잡는다
+                    state.update({day: signatures[day] for day in stale})
+                    save_state(STATE_FILE, state)
             else:
                 logger.info("뒤처진 날짜 없음")
             # 0 이어야 정상이다. 쌓이면 내려주기가 silver 를 못 따라가고 있다는 뜻

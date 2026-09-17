@@ -110,3 +110,30 @@ def test_stale_days_empty_when_everything_current(tmp_path):
     f.write_text("x", encoding="utf-8")
     os.utime(f, (3000, 3000))
     assert ex.stale_days({"2026-09-07": 1000.0}, str(out)) == []
+
+
+def test_stale_by_signature_picks_changed_and_unknown_days():
+    signatures = {"2026-09-06": "aaa", "2026-09-07": "bbb", "2026-09-08": "ccc"}
+    state = {"2026-09-06": "aaa", "2026-09-07": "old"}
+    # 지문이 같은 날짜는 건너뛰고, 달라진 날짜와 기록에 없는 날짜만 고른다
+    assert ex.stale_by_signature(signatures, state) == ["2026-09-07", "2026-09-08"]
+
+
+def test_stale_by_signature_takes_everything_without_state():
+    # 기록이 없으면 전체를 다시 내린다. 파케이에서 내려준 파일을 믿지 않는다
+    signatures = {"2019-01-01": "a", "2026-09-08": "b"}
+    assert ex.stale_by_signature(signatures, {}) == ["2019-01-01", "2026-09-08"]
+
+
+def test_state_round_trip_and_missing_file(tmp_path):
+    path = str(tmp_path / "state" / "ds_input_export.json")
+    assert ex.load_state(path) == {}  # 첫 실행
+    ex.save_state(path, {"2026-09-08": "abc"})
+    assert ex.load_state(path) == {"2026-09-08": "abc"}
+
+
+def test_load_state_survives_broken_file(tmp_path):
+    path = tmp_path / "broken.json"
+    path.write_text("{ 깨진", encoding="utf-8")
+    # 깨진 기록은 빈 값으로 본다. 전체를 다시 내리지만 데이터가 빠지지는 않는다
+    assert ex.load_state(str(path)) == {}
