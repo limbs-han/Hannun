@@ -157,6 +157,17 @@ public class IssueQueryService {
             throw new ViewpointGroupNotFoundException(groupId);
         }
 
+        // 첫 페이지(커서 없음)면 미리보기(previewArticles)와 같은 기준(findTop3ByViewpointGroupId)으로
+        // 상위 3개를 구해서 그 마지막 항목을 커서 삼음 - 더보기가 미리보기랑 겹치지 않고 그 다음부터 이어짐.
+        if (cursorPublished == null && cursorArticleId == null) {
+            List<Article> previewArticles = articleQueryService.findTop3ByViewpointGroupId(groupId);
+            if (!previewArticles.isEmpty()) {
+                Article lastPreview = previewArticles.get(previewArticles.size() - 1);
+                cursorPublished = lastPreview.getPublished();
+                cursorArticleId = lastPreview.getId();
+            }
+        }
+
         List<Article> rows = articleQueryService.findByViewpointGroupIdWithCursor(
                 groupId, cursorPublished, cursorArticleId, size + 1);
         CursorPage<Article> cursorPage = CursorPage.of(rows, size);
