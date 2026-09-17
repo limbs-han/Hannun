@@ -304,6 +304,42 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
   }))
 })
 
+/* ---------- 언론사 로고 ---------- */
+// src/assets/press/<언론사명>.png|svg|jpg|webp 를 두면 자동으로 잡힙니다.
+const pressLogoFiles = import.meta.glob('./assets/press/*.{png,svg,ico,jpg,jpeg,webp}', { eager: true, import: 'default' }) as Record<string, string>
+
+// 로고 파일이 없는 곳은 이름 첫 글자 배지로 대체합니다.
+const PRESS_COLORS: Record<string, string> = {
+  연합뉴스: '#2b6b8f',
+  한겨레: '#3f3f3c',
+  경향신문: '#4c7c5a',
+  오마이뉴스: '#b0453e',
+  동아일보: '#2f5d9e',
+  조선일보: '#35506e',
+  세계일보: '#a2553f',
+  서울신문: '#5b6bb5',
+  국민일보: '#4a7ba7',
+  매일경제: '#7a6aa8',
+  한국경제: '#3f7f74',
+}
+const FALLBACK_COLORS = ['#2b6b8f', '#4c7c5a', '#b0453e', '#7a6aa8', '#a2553f', '#3f7f74', '#5b6bb5', '#3f3f3c']
+
+function pressLogo(company: string) {
+  const hit = Object.keys(pressLogoFiles).find((path) => path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '') === company)
+  return hit ? pressLogoFiles[hit] : null
+}
+
+function pressInitial(company: string) {
+  return (company || '?').trim().charAt(0)
+}
+
+function pressColor(company: string) {
+  if (PRESS_COLORS[company]) return PRESS_COLORS[company]
+  let sum = 0
+  for (const ch of company || '') sum = (sum + ch.charCodeAt(0)) % 997
+  return FALLBACK_COLORS[sum % FALLBACK_COLORS.length]
+}
+
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
 
 function briefingPreview(issue: Issue) {
@@ -460,7 +496,8 @@ function queueRelatedSearch(value = query.value) {
 
   relatedSearchTimer = setTimeout(async () => {
     try {
-      const response = await api.search({ keyword: term, category: category.value === '전체' ? undefined : category.value })
+      // 타이핑 중 호출 — 인기 검색어 집계에서 제외되도록 preview 를 켭니다.
+      const response = await api.search({ keyword: term, category: category.value === '전체' ? undefined : category.value, preview: true })
       if (requestId !== relatedSearchRequestId || relatedSearchTerm.value !== term) return
       relatedSearchResults.value = response.items.map(mapIssue).slice(0, 6)
     } catch {
@@ -530,6 +567,7 @@ async function search(word = query.value) {
   localStorage.setItem('hannun-recent', JSON.stringify(recent.value))
   navigate({ __hannun: true, page: 'search', keyword: value })
   await loadSearch(true)
+  void loadPopularKeywords()
 }
 
 async function loadSearch(reset = false) {
@@ -537,7 +575,8 @@ async function loadSearch(reset = false) {
   searchLoading.value = true
   if (reset) { searchCursorValue.value = null; searchCursorId.value = null; searchTopIssues.value = []; searchTopLoading.value = true }
   try {
-    const response = await api.search({ keyword: keyword.value, category: category.value === '전체' ? undefined : category.value, cursorValue: reset ? null : searchCursorValue.value, cursorId: reset ? null : searchCursorId.value })
+    // 사용자가 확정한 검색 — preview:false 로 보내야 인기 검색어에 반영됩니다.
+    const response = await api.search({ keyword: keyword.value, category: category.value === '전체' ? undefined : category.value, cursorValue: reset ? null : searchCursorValue.value, cursorId: reset ? null : searchCursorId.value, preview: false })
     const mapped = response.items.map(mapIssue)
     results.value = reset ? mapped : [...results.value, ...mapped.filter((item) => !results.value.some((existing) => existing.id === item.id))]
     if (reset) searchTopIssues.value = [...mapped].sort((a, b) => b.articles - a.articles).slice(0, 3)
@@ -694,7 +733,7 @@ onBeforeUnmount(() => {
                   <button type="button" aria-label="다음 달" @click="changeCalendarMonth(1)">›</button>
                 </div>
                 <div class="date-picker-week"><span v-for="day in ['일', '월', '화', '수', '목', '금', '토']" :key="day">{{ day }}</span></div>
-                <div class="date-picker-days">
+                <div class="date-picker-days" :class="{ ranged: dateFromInput && dateToInput }">
                   <template v-for="day in calendarDays" :key="day.key">
                     <button v-if="day.label" type="button" :class="{ selected: day.selected, 'in-range': day.inRange, start: day.isStart, end: day.isEnd }" @click="selectCalendarDate(day.date)">{{ day.label }}</button>
                     <span v-else></span>
@@ -725,6 +764,14 @@ onBeforeUnmount(() => {
               </div>
             </a>
           </article>
+
+          <div v-if="feedLoading && !feed.length" class="loading">뉴스를 불러오는 중입니다…</div>
+          <div v-else-if="!feed.length" class="empty">
+            <b>표시할 이슈가 없습니다.</b>
+            <p v-if="dateRangeActive">{{ appliedDateFrom }} ~ {{ appliedDateTo }} 기간에 해당하는 이슈가 없습니다. 기간을 넓혀보세요.</p>
+            <p v-else-if="category !== '전체'">‘{{ category }}’ 카테고리에 표시할 이슈가 없습니다. 다른 카테고리를 선택해보세요.</p>
+            <p v-else>아직 수집된 이슈가 없습니다. 잠시 후 다시 확인해주세요.</p>
+          </div>
 
           <button v-if="feedHasNext" ref="feedSentinel" class="more" :disabled="feedLoading" @click="loadMoreFeed">
             {{ feedLoading ? '뉴스를 불러오는 중입니다　○' : '더 많은 뉴스 불러오기' }}
@@ -784,7 +831,11 @@ onBeforeUnmount(() => {
                 <div v-if="card.articles.length" class="opinion-news-grid">
                   <a class="latest-news" :href="card.articles[0].link || '#'" target="_blank" rel="noopener noreferrer" @click="handleArticleClick($event, card, card.articles[0])">
                     <img :src="card.articles[0].thumbnail || summitNewsImage" :alt="`${card.articles[0].source} 최신 기사`" />
-                    <span class="source">{{ card.articles[0].source }}</span>
+                    <span class="source">
+                      <img v-if="pressLogo(card.articles[0].source)" class="press-logo" :src="pressLogo(card.articles[0].source)!" :alt="`${card.articles[0].source} 로고`" />
+                      <i v-else class="press-logo" :style="{ background: pressColor(card.articles[0].source) }" aria-hidden="true">{{ pressInitial(card.articles[0].source) }}</i>
+                      {{ card.articles[0].source }}
+                    </span>
                     <b>{{ articleTitle(card.articles[0]) }}</b>
                     <small>{{ card.articles[0].time }} · {{ card.articles[0].byline }}</small>
                   </a>
@@ -797,7 +848,11 @@ onBeforeUnmount(() => {
                       rel="noopener noreferrer"
                       @click="handleArticleClick($event, card, article)"
                     >
-                      <span class="source">{{ article.source }}</span>
+                      <span class="source">
+                        <img v-if="pressLogo(article.source)" class="press-logo" :src="pressLogo(article.source)!" :alt="`${article.source} 로고`" />
+                        <i v-else class="press-logo" :style="{ background: pressColor(article.source) }" aria-hidden="true">{{ pressInitial(article.source) }}</i>
+                        {{ article.source }}
+                      </span>
                       <b>{{ articleTitle(article) }}</b>
                       <small>{{ article.time }} · {{ article.byline }}</small>
                     </a>
@@ -813,7 +868,11 @@ onBeforeUnmount(() => {
                     rel="noopener noreferrer"
                     @click="handleArticleClick($event, card, article)"
                   >
-                    <span class="source">{{ article.source }}</span>
+                    <span class="source">
+                        <img v-if="pressLogo(article.source)" class="press-logo" :src="pressLogo(article.source)!" :alt="`${article.source} 로고`" />
+                        <i v-else class="press-logo" :style="{ background: pressColor(article.source) }" aria-hidden="true">{{ pressInitial(article.source) }}</i>
+                        {{ article.source }}
+                      </span>
                     <div><b>{{ articleTitle(article) }}</b><small>{{ article.time }} · {{ article.byline }}</small></div>
                     <em>↗</em>
                   </a>

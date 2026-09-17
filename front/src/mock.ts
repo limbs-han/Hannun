@@ -20,6 +20,9 @@ const NETWORK_DELAY = 260
 
 const delay = <T>(value: T): Promise<T> => new Promise((r) => setTimeout(() => r(value), NETWORK_DELAY))
 
+// 확정 검색만 집계합니다(preview 제외). 실제 서버가 하는 일을 흉내낸 것입니다.
+const confirmedSearches = new Map<string, number>()
+
 interface Seed {
   issueId: number
   category: string
@@ -218,7 +221,8 @@ const GROUP_LABELS: Record<ApiStance, string[]> = {
   negative: ['C-1 재정 부담 우려', 'C-2 실효성 의문', 'C-3 절차적 논란'],
 }
 
-const COMPANIES = ['한눈일보', '○○일보', '□□뉴스', '◇◇일보', '▽▽방송', '☆☆경제', '◈◈신문', '▲▲일보', '●●경제']
+// 실제 수집 대상 언론사 (03_수집_정책.md 기준 10곳 + 통신사)
+const COMPANIES = ['연합뉴스', '한겨레', '경향신문', '오마이뉴스', '동아일보', '조선일보', '세계일보', '서울신문', '국민일보', '매일경제', '한국경제']
 const REPORTERS = ['김한눈', '이기자', '최기자', '정기자', '한기자', '오기자', '박기자', '윤기자', '장기자']
 
 const toItem = (s: Seed): IssueListItem => ({
@@ -351,10 +355,14 @@ export const mockApi: HannunApi = {
   },
 
   getSearchSuggestions() {
-    return delay({ popularKeywords: ['한·미 정상회담', '기준금리', '집중호우', 'AI 기본법', '가계대출', '국제 유가'] })
+    const counted = [...confirmedSearches.entries()].sort((a, b) => b[1] - a[1]).map(([word]) => word)
+    const base = ['한·미 정상회담', '기준금리', '집중호우', 'AI 기본법', '가계대출', '국제 유가']
+    return delay({ popularKeywords: [...new Set([...counted, ...base])].slice(0, 10) })
   },
 
-  search({ keyword, category, cursorValue, cursorId }) {
+  search({ keyword, category, cursorValue, cursorId, preview }) {
+    // preview 호출은 집계에서 빼고, 확정 검색(첫 페이지)만 셉니다.
+    if (!preview && cursorId == null) confirmedSearches.set(keyword, (confirmedSearches.get(keyword) ?? 0) + 1)
     const hit = SEEDS.filter(
       (s) =>
         (!category || category === 'ALL' || s.category === category) &&
