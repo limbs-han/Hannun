@@ -92,37 +92,6 @@ nav .active:after{content:'';position:absolute;bottom:-1px;left:12px;right:12px;
 .title>div button:hover{background:var(--hover);color:var(--ink)}
 .title>div button.active{font-weight:600;color:var(--ink);background:var(--hover)}
 
-/* home — 기간 선택 */
-.date-range-filter{position:relative;display:flex;align-items:center;gap:7px}
-.date-range-filter>span{font-size:12px;color:var(--ink-3)}
-.date-picker-trigger,.date-range-reset{padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font:500 12.5px var(--font);color:var(--ink-2);transition:background .12s ease,border-color .12s ease}
-.date-picker-trigger:hover,.date-range-reset:hover:not(:disabled){background:var(--bg-soft);border-color:var(--line-2)}
-.date-picker-trigger b{font-weight:400;color:var(--ink-3);margin-left:2px}
-.date-range-filter>small{position:absolute;top:38px;right:0;z-index:19;padding:6px 10px;border-radius:6px;background:#fbecec;color:#b0453e;font-size:11.5px;white-space:nowrap;box-shadow:var(--shadow-1)}
-.date-picker{position:absolute;z-index:20;top:38px;right:0;width:286px;padding:12px;background:var(--bg);border-radius:10px;box-shadow:var(--shadow-2)}
-.date-picker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:8px}
-.date-picker-head strong{font:600 13.5px var(--font)}
-.date-picker-head button{width:26px;height:26px;border-radius:6px;font-size:15px;line-height:1;color:var(--ink-2)}
-.date-picker-head button:hover{background:var(--hover);color:var(--ink)}
-.date-picker-week{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:4px 0 2px;border-top:1px solid var(--line)}
-.date-picker-week span{text-align:center;font:500 10.5px var(--font);color:var(--ink-3)}
-/* 가로 간격을 0 으로 둬야 선택 기간이 한 줄로 이어집니다(세로 간격만 유지). */
-.date-picker-days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px 0}
-.date-picker-days button{height:32px;border-radius:6px;font-size:12.5px;color:var(--ink);transition:background .1s ease,color .1s ease}
-.date-picker-days button:hover{background:var(--hover)}
-.date-picker-days button.in-range{background:var(--blue-bg);color:var(--blue-ink);border-radius:0}
-.date-picker-days button.selected{background:var(--blue);color:#fff;font-weight:600}
-/* 기간이 잡혔을 때만 양 끝의 안쪽 모서리를 펴서 밴드와 붙입니다. */
-.date-picker-days.ranged button.start{border-radius:6px 0 0 6px}
-.date-picker-days.ranged button.end{border-radius:0 6px 6px 0}
-.date-picker-days.ranged button.start.end{border-radius:6px}
-.date-picker>p{margin:8px 0 0;padding-top:9px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3)}
-.date-picker-actions{display:flex;gap:6px;margin-top:9px}
-.date-picker-actions button{flex:1;padding:7px;border:1px solid var(--line);border-radius:6px;font:500 12.5px var(--font);color:var(--ink-2);transition:background .12s ease}
-.date-picker-actions button:hover:not(:disabled){background:var(--bg-soft)}
-.date-picker-actions button[type=submit]{border-color:transparent;background:var(--ink);color:#fff}
-.date-picker-actions button[type=submit]:hover:not(:disabled){background:#2b2a26}
-
 /* home — 피드 카드 */
 .feed article{border-bottom:1px solid var(--line)}
 .feed-card{position:relative;display:block;text-decoration:none;color:inherit}
@@ -164,7 +133,9 @@ nav .active:after{content:'';position:absolute;bottom:-1px;left:12px;right:12px;
 .detail-stance button:nth-child(1){--seg-bg:#edf3ec;--seg-ink:#448361;--seg-line:#b9d0bd}
 .detail-stance button:nth-child(2){--seg-bg:#f1f1ef;--seg-ink:#5f5e5b;--seg-line:#c9c8c4}
 .detail-stance button:nth-child(3){--seg-bg:#fbecec;--seg-ink:#b0453e;--seg-line:#e3aeaa}
-.detail-stance button:hover{background:var(--seg-bg);border-color:var(--seg-line);color:var(--seg-ink)}
+.detail-stance button:not(:disabled):hover{background:var(--seg-bg);border-color:var(--seg-line);color:var(--seg-ink)}
+/* 기사가 0 건인 관점은 눌러도 빈 화면이라 막아 둡니다. */
+.detail-stance button:disabled{opacity:.4;cursor:default}
 .detail-stance button.active{background:var(--seg-bg);border-color:var(--seg-line);color:var(--seg-ink);font-weight:600}
 .detail-stance button b{font-weight:600}
 .detail-stance.ratio-mode{gap:6px}
@@ -203,7 +174,7 @@ nav .active:after{content:'';position:absolute;bottom:-1px;left:12px;right:12px;
 .opinion-card{padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--bg);box-shadow:var(--shadow-1)}
 .opinion-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .opinion-head span{font:600 10.5px var(--font);letter-spacing:.06em;color:var(--ink-3)}
-.opinion-head small{font-size:11.5px;color:var(--ink-3)}
+.opinion-head small{font-size:11.5px;color:var(--ink-3);margin-left:auto}
 .opinion-card>h3{font:600 16px/1.5 var(--font);letter-spacing:-.016em;margin:8px 0 0;word-break:keep-all}
 .opinion-summary{margin:8px 0 0;font-size:13px;line-height:1.65;color:var(--ink-2)}
 
@@ -341,8 +312,6 @@ footer small{font-size:11.5px;color:var(--ink-3);margin-left:auto}
  nav button{height:38px;padding:0 13px;font-size:15px}
  .layout{padding:20px 0 56px}
  .title{align-items:flex-start}
- .date-range-filter{flex-wrap:wrap;width:100%;justify-content:flex-end}
- .date-picker{left:auto;right:0;width:min(286px,100%)}
  .feed-article-body{padding:15px 10px}
  .feed-card h3{font-size:16.5px}
  /* 터치 기기에는 hover 가 없으므로 브리핑을 인라인으로 펼칩니다. */
