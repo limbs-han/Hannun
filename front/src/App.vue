@@ -25,7 +25,7 @@ type ViewGroup = { press: number; articles: number; summary: string; lead: ViewA
 type BriefingFact = { text: string }
 type PageName = 'home' | 'detail' | 'search'
 type NavigationState = { __hannun: true; page: PageName; issueId?: number; keyword?: string }
-type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; articles: ViewArticle[] }
+type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; previewCount: number; articles: ViewArticle[] }
 type CalendarDay = { key: string; date: string; label: number | null; selected: boolean; inRange: boolean; isStart: boolean; isEnd: boolean }
 
 /* ---------- API 실패 시 폴백 목업 ---------- */
@@ -290,7 +290,7 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
   if (detailData.value?.viewpointGroups?.length) {
     return detailData.value.viewpointGroups.map((group, index) => {
       const extra = groupArticles.value[group.groupId] ?? []
-      return { number: String(index + 1).padStart(2, '0'), groupId: group.groupId, title: group.label, description: '', press: group.pressCount, articleCount: group.articleCount, remainingCount: Math.max(group.remainingCount - extra.length, 0), articles: [...group.previewArticles.map(mapArticle), ...extra] }
+      return { number: String(index + 1).padStart(2, '0'), groupId: group.groupId, title: group.label, description: '', press: group.pressCount, articleCount: group.articleCount, remainingCount: Math.max(group.remainingCount - extra.length, 0), previewCount: group.previewArticles.length, articles: [...group.previewArticles.map(mapArticle), ...extra] }
     })
   }
   if (!stance.value || !currentGroup.value) return []
@@ -302,6 +302,7 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
     press: viewpointTotals[index].press,
     articleCount: viewpointTotals[index].articles,
     remainingCount: 2,
+    previewCount: 4,
     articles: [article, companionArticles[stance.value!][index], currentGroup.value!.related[Math.min(index + 1, currentGroup.value!.related.length - 1)], additionalArticles[index], additionalArticles[(index + 1) % additionalArticles.length], additionalArticles[(index + 2) % additionalArticles.length]],
   }))
 })
@@ -340,6 +341,12 @@ function pressColor(company: string) {
   let sum = 0
   for (const ch of company || '') sum = (sum + ch.charCodeAt(0)) % 997
   return FALLBACK_COLORS[sum % FALLBACK_COLORS.length]
+}
+
+// 위쪽에 보이지 않는 기사 수 = 이미 불러왔지만 접힌 것 + 아직 안 불러온 것.
+// remainingCount 만 보면 전부 불러온 뒤 접었을 때 버튼이 사라져 다시 펼칠 수 없습니다.
+function hiddenCount(card: ViewpointCard) {
+  return Math.max(card.articles.length - card.previewCount, 0) + card.remainingCount
 }
 
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
@@ -444,12 +451,51 @@ async function loadGroupArticles(groupId: number) {
   try {
     const response = await api.getViewpointGroupArticles(selected.value.id, groupId, cursor?.published, cursor?.articleId)
     const existing = groupArticles.value[groupId] ?? []
-    const mapped = response.items.map(mapArticle).filter((article) => !existing.some((item) => item.id === article.id))
+    // 서버가 previewArticles 를 다시 포함해 내려주므로 위에 이미 보인 기사도 걸러냅니다.
+    const previewIds = new Set(
+      (detailData.value?.viewpointGroups ?? []).find((g) => g.groupId === groupId)?.previewArticles.map((a) => a.articleId) ?? [],
+    )
+    const mapped = response.items
+      .map(mapArticle)
+      .filter((article) => !previewIds.has(article.id as number) && !existing.some((item) => item.id === article.id))
     groupArticles.value = { ...groupArticles.value, [groupId]: [...existing, ...mapped] }
     groupCursor.value = { ...groupCursor.value, [groupId]: { published: response.nextCursorPublished, articleId: response.nextCursorArticleId, hasNext: response.hasNext } }
   } catch {
     groupCursor.value = { ...groupCursor.value, [groupId]: { published: null, articleId: null, hasNext: false } }
   }
+}
+
+// 더보기는 10건씩 노출합니다. 서버가 한 번에 다 내려주든 나눠 내려주든
+// 화면에서는 10건 단위로만 늘어납니다.
+const REVEAL_STEP = 10
+const revealed = ref<Record<string, number>>({})
+
+function extraArticles(card: ViewpointCard) {
+  return card.articles.slice(card.previewCount)
+}
+
+function visibleExtraArticles(card: ViewpointCard) {
+  return extraArticles(card).slice(0, revealed.value[card.number] ?? REVEAL_STEP)
+}
+
+function canRevealMore(card: ViewpointCard) {
+  return visibleExtraArticles(card).length < extraArticles(card).length || card.remainingCount > 0
+}
+
+// 노출 목표치를 채울 만큼 서버에서 당겨옵니다(서버 페이지 크기가 10 보다 작을 수 있어서).
+async function fillUpTo(card: ViewpointCard, target: number) {
+  if (!card.groupId) return
+  for (let i = 0; i < 5; i++) {
+    if (extraArticles(card).length >= target) return
+    if (groupCursor.value[card.groupId]?.hasNext === false) return
+    await loadGroupArticles(card.groupId)
+  }
+}
+
+async function revealMore(card: ViewpointCard) {
+  const next = (revealed.value[card.number] ?? REVEAL_STEP) + REVEAL_STEP
+  revealed.value = { ...revealed.value, [card.number]: next }
+  await fillUpTo(card, next)
 }
 
 async function toggleOpinion(card: ViewpointCard) {
@@ -459,7 +505,8 @@ async function toggleOpinion(card: ViewpointCard) {
   }
   if (card.groupId) {
     sendLog('EXPAND_GROUP', { issueId: selected.value.id, viewpointGroupId: card.groupId, remainingCount: card.remainingCount })
-    if (!groupArticles.value[card.groupId]?.length) await loadGroupArticles(card.groupId)
+    revealed.value = { ...revealed.value, [card.number]: REVEAL_STEP }
+    await fillUpTo(card, REVEAL_STEP)
   }
   expandedCards.value = [...expandedCards.value, card.number]
 }
@@ -843,7 +890,7 @@ onBeforeUnmount(() => {
                   </a>
                   <div class="other-news">
                     <a
-                      v-for="article in card.articles.slice(1, 4)"
+                      v-for="article in card.articles.slice(1, card.previewCount)"
                       :key="article.id ?? `${article.source}-${article.headline}`"
                       :href="article.link || '#'"
                       target="_blank"
@@ -863,7 +910,7 @@ onBeforeUnmount(() => {
 
                 <div v-if="expandedCards.includes(card.number)" class="expanded-news">
                   <a
-                    v-for="article in card.articles.slice(4)"
+                    v-for="article in visibleExtraArticles(card)"
                     :key="article.id ?? `${article.source}-${article.headline}`"
                     :href="article.link || '#'"
                     target="_blank"
@@ -878,11 +925,11 @@ onBeforeUnmount(() => {
                     <div><b>{{ articleTitle(article) }}</b><small>{{ article.time }} · {{ article.byline }}</small></div>
                     <em>↗</em>
                   </a>
-                  <button v-if="card.groupId && groupCursor[card.groupId]?.hasNext" class="opinion-more" @click="loadGroupArticles(card.groupId)">기사 더 불러오기 ↓</button>
+                  <button v-if="canRevealMore(card)" class="opinion-more" @click="revealMore(card)">기사 더 보기 ↓</button>
                 </div>
 
-                <button v-if="card.remainingCount > 0 || expandedCards.includes(card.number)" class="opinion-more" @click="toggleOpinion(card)">
-                  {{ expandedCards.includes(card.number) ? '관련 기사 접기 ↑' : `관련 기사 ${card.remainingCount}건 더보기 ↓` }}
+                <button v-if="hiddenCount(card) > 0 || expandedCards.includes(card.number)" class="opinion-more" @click="toggleOpinion(card)">
+                  {{ expandedCards.includes(card.number) ? '관련 기사 접기 ↑' : '관련 기사 더보기 ↓' }}
                 </button>
               </article>
 
