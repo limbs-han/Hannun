@@ -113,6 +113,9 @@ services:
       - ../backfill:/opt/airflow/backfill
       # 수집기의 "이미 본 기사" sqlite — 컨테이너 재생성 시에도 보존해야 재발행이 없다
       - crawler-state:/opt/airflow/state
+      # spark-submit --packages 가 내려받는 jar 캐시. 컨테이너에만 두면 재생성마다 다시
+      # 받는다. silver 재구축은 3시간 넘게 도는데 그 사이 다시 받게 되면 처음부터다
+      - ivy-cache:/home/airflow/.ivy2
       # DS 분석 산출물. gold 이슈 피드 잡이 읽는다(S15P21E105-69). DS 코드가 HDFS 를
       # 쓰지 못해 로컬에 두고 읽기 전용으로 붙인다
       - ~/gold:/opt/airflow/ds_gold:ro
@@ -141,3 +144,4 @@ volumes:
   postgres:
   airflow-logs:
   crawler-state:
+  ivy-cache:
