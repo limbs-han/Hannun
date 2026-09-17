@@ -1,12 +1,11 @@
 // 한눈 API 클라이언트 — 명세서: API명세서/한눈_API_5.md
-// VITE_API_BASE_URL 이 없으면 App.vue 가 mock.ts 의 mockApi 를 씁니다.
+// VITE_API_BASE_URL 이 비어 있으면 같은 도메인의 /api 를 호출합니다.
 
 export type ApiStance = 'positive' | 'neutral' | 'negative'
 export type FeedSort = 'trending' | 'latest'
 
 export const STANCES: ApiStance[] = ['positive', 'neutral', 'negative']
 export const STANCE_LABEL: Record<ApiStance, string> = { positive: '긍정', neutral: '중립', negative: '부정' }
-export const CATEGORIES = ['ALL', '정치', '경제', '사회', 'IT', '세계'] as const
 
 /* 1. 메인 피드 / 6. 기간 검색 */
 export interface IssueListItem {
