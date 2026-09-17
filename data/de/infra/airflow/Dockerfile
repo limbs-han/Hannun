@@ -18,3 +18,8 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt pyspark==3.5.4
 # 크롤러 상태(seen.sqlite) 자리. 이미지에 airflow 소유로 만들어 둬야
 # 이름 있는 볼륨이 첫 마운트에서 소유권을 이어받아 쓰기가 된다
 RUN mkdir /opt/airflow/state
+
+# spark-submit --packages 의 jar 캐시 자리. state 와 같은 이유로 이미지에 airflow 소유로
+# 만들어 둔다. 없는 경로에 이름 있는 볼륨을 붙이면 root 소유 빈 폴더가 생겨 쓰기가 막히고,
+# spark-submit 이 의존성 해석 단계에서 FileNotFoundException 으로 죽는다 (2026-09-17 실측)
+RUN mkdir /home/airflow/.ivy2
