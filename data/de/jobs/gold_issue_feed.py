@@ -22,6 +22,7 @@ import os
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql import types as T
 
 import metrics
 
@@ -82,6 +83,20 @@ def _blank_to_null(col):
     return F.when(F.trim(col) == "", None).otherwise(col)
 
 
+def _briefing_column(raw):
+    """commonFactsBriefing 을 배열로 맞춘다. 값이 없으면 null.
+
+    BE 가 List<String> 으로 받으므로 DS2 도 문장 리스트를 그대로 준다. 이미지 배포가 코드
+    배포보다 늦으면 한 주기 동안 옛 문자열이 오므로 그때는 원소 하나짜리 배열로 감싼다.
+    빈 배열은 결측으로 본다 — 그래야 대표 기사 본문으로 채우는 길이 열린다.
+    """
+    col = F.col("commonFactsBriefing")
+    if isinstance(raw.schema["commonFactsBriefing"].dataType, T.StringType):
+        # null 을 그냥 감싸면 [null] 이 되어 값이 있는 것으로 보인다
+        col = F.when(col.isNull() | (F.trim(col) == ""), None).otherwise(F.array(col))
+    return F.when(F.size(col) <= 0, None).otherwise(col)
+
+
 def read_ds2(spark, window):
     """창과 짝인 DS2 결과를 기사당 한 줄로 펼쳐 읽는다. 짝인 파일이 없으면 None.
 
@@ -97,7 +112,7 @@ def read_ds2(spark, window):
     article = F.explode("articles").alias("article")
     return (raw.select(F.col("clusterId").alias("cluster_id"),
                        _blank_to_null(F.col("factSummary")).alias("ds2_fact_summary"),
-                       _blank_to_null(F.col("commonFactsBriefing")).alias("ds2_briefing"),
+                       _briefing_column(raw).alias("ds2_briefing"),
                        _blank_to_null(F.col("category")).alias("ds2_category"), article)
             .select("cluster_id", "ds2_fact_summary", "ds2_briefing", "ds2_category",
                     F.col("article.link").alias("link"),
@@ -186,8 +201,9 @@ def build(spark, day, window=None):
                 F.col("issue_id").alias("cluster_id"),
                 F.col("rep_category").alias("category"),
                 F.col("rep_title").alias("fact_summary"),
-                # 요약 코드가 없어 대표 기사 본문 앞부분을 넣는다. 발행기가 목업 표시를 붙인다
-                F.substring(F.regexp_replace(F.col("rep_content"), r"\s+", " "), 1, 200)
+                # 요약 코드가 없어 대표 기사 본문 앞부분을 넣는다. 발행기가 목업 표시를 붙인다.
+                # BE 가 List<String> 으로 받으므로 DS2 값과 같은 배열 모양으로 둔다
+                F.array(F.substring(F.regexp_replace(F.col("rep_content"), r"\s+", " "), 1, 200))
                  .alias("common_facts_briefing"),
                 F.col("summarized_at").alias("clustered_at"),
                 F.col("url").alias("link"),
