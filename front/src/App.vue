@@ -25,7 +25,7 @@ type ViewGroup = { press: number; articles: number; summary: string; lead: ViewA
 type BriefingFact = { text: string }
 type PageName = 'home' | 'detail' | 'search'
 type NavigationState = { __hannun: true; page: PageName; issueId?: number; keyword?: string }
-type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; previewCount: number; articles: ViewArticle[] }
+type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; articles: ViewArticle[] }
 type CalendarDay = { key: string; date: string; label: number | null; selected: boolean; inRange: boolean; isStart: boolean; isEnd: boolean }
 
 /* ---------- API 실패 시 폴백 목업 ---------- */
@@ -290,7 +290,7 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
   if (detailData.value?.viewpointGroups?.length) {
     return detailData.value.viewpointGroups.map((group, index) => {
       const extra = groupArticles.value[group.groupId] ?? []
-      return { number: String(index + 1).padStart(2, '0'), groupId: group.groupId, title: group.label, description: '', press: group.pressCount, articleCount: group.articleCount, remainingCount: Math.max(group.remainingCount - extra.length, 0), previewCount: group.previewArticles.length, articles: [...group.previewArticles.map(mapArticle), ...extra] }
+      return { number: String(index + 1).padStart(2, '0'), groupId: group.groupId, title: group.label, description: '', press: group.pressCount, articleCount: group.articleCount, remainingCount: Math.max(group.remainingCount - extra.length, 0), articles: [...group.previewArticles.map(mapArticle), ...extra] }
     })
   }
   if (!stance.value || !currentGroup.value) return []
@@ -302,7 +302,6 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
     press: viewpointTotals[index].press,
     articleCount: viewpointTotals[index].articles,
     remainingCount: 2,
-    previewCount: 4,
     articles: [article, companionArticles[stance.value!][index], currentGroup.value!.related[Math.min(index + 1, currentGroup.value!.related.length - 1)], additionalArticles[index], additionalArticles[(index + 1) % additionalArticles.length], additionalArticles[(index + 2) % additionalArticles.length]],
   }))
 })
@@ -343,10 +342,18 @@ function pressColor(company: string) {
   return FALLBACK_COLORS[sum % FALLBACK_COLORS.length]
 }
 
-// 위쪽에 보이지 않는 기사 수 = 이미 불러왔지만 접힌 것 + 아직 안 불러온 것.
-// remainingCount 만 보면 전부 불러온 뒤 접었을 때 버튼이 사라져 다시 펼칠 수 없습니다.
+// 서버에서 아직 받아올 수 있는 기사 수.
+// hasNext 가 false 면 remainingCount 가 남아 있어도 더 가져올 수 없습니다.
+// 이 값을 안 보고 remainingCount 만 믿으면, 실제로는 다 나왔는데 더보기 버튼이 남습니다.
+function pendingFromServer(card: ViewpointCard) {
+  if (card.groupId && groupCursor.value[card.groupId]?.hasNext === false) return 0
+  return card.remainingCount
+}
+
+// 위쪽에 보이지 않는 기사 수 = 이미 불러왔지만 접힌 것 + 아직 서버에 남은 것.
+// 앞엣것을 빼먹으면 전부 불러온 뒤 접었을 때 버튼이 사라져 다시 펼칠 수 없습니다.
 function hiddenCount(card: ViewpointCard) {
-  return Math.max(card.articles.length - card.previewCount, 0) + card.remainingCount
+  return Math.max(card.articles.length - TOP_COUNT, 0) + pendingFromServer(card)
 }
 
 function articleTitle(article: ViewArticle) { return article.headline.replace('{issue}', selected.value.title) }
@@ -412,12 +419,13 @@ async function loadIssueDetail(issueId: number, selectedApiStance: ApiStance, gr
     detailData.value = response
     selected.value = { id: response.issueId, category: response.category, title: response.factSummary, press: response.pressCount, articles: response.articleCount, summary: response.factSummary, time: formatDate(response.lastReportedAt) }
     stance.value = apiToStance[response.selectedStance]
-    if (!append) { groupArticles.value = {}; groupCursor.value = {}; expandedCards.value = [] }
+    if (!append) { groupArticles.value = {}; groupCursor.value = {}; expandedCards.value = []; revealed.value = {} }
   } catch {
     if (!append) detailData.value = null
   } finally {
     detailLoading.value = false
   }
+  void fillTopSlots()
 }
 
 async function choose(value: Stance) {
@@ -465,13 +473,17 @@ async function loadGroupArticles(groupId: number) {
   }
 }
 
+// 상단 블록은 대표기사 1건 + 관련기사 3건 = 4건으로 고정입니다.
+// API 의 previewArticles 는 3건이라, 모자라면 상세를 연 뒤 한 번 더 당겨 4칸을 채웁니다.
+const TOP_COUNT = 4
+
 // 더보기는 10건씩 노출합니다. 서버가 한 번에 다 내려주든 나눠 내려주든
 // 화면에서는 10건 단위로만 늘어납니다.
 const REVEAL_STEP = 10
 const revealed = ref<Record<string, number>>({})
 
 function extraArticles(card: ViewpointCard) {
-  return card.articles.slice(card.previewCount)
+  return card.articles.slice(TOP_COUNT)
 }
 
 function visibleExtraArticles(card: ViewpointCard) {
@@ -479,7 +491,7 @@ function visibleExtraArticles(card: ViewpointCard) {
 }
 
 function canRevealMore(card: ViewpointCard) {
-  return visibleExtraArticles(card).length < extraArticles(card).length || card.remainingCount > 0
+  return visibleExtraArticles(card).length < extraArticles(card).length || pendingFromServer(card) > 0
 }
 
 // 노출 목표치를 채울 만큼 서버에서 당겨옵니다(서버 페이지 크기가 10 보다 작을 수 있어서).
@@ -496,6 +508,19 @@ async function revealMore(card: ViewpointCard) {
   const next = (revealed.value[card.number] ?? REVEAL_STEP) + REVEAL_STEP
   revealed.value = { ...revealed.value, [card.number]: next }
   await fillUpTo(card, next)
+}
+
+// previewArticles 가 4건이 안 되는 그룹은 상단 칸이 비므로 한 번만 더 불러옵니다.
+async function fillTopSlots() {
+  const groups = detailData.value?.viewpointGroups ?? []
+  await Promise.all(
+    groups.map((g) => {
+      if (g.previewArticles.length >= TOP_COUNT) return undefined
+      if (g.remainingCount <= 0) return undefined
+      if (groupArticles.value[g.groupId]?.length) return undefined
+      return loadGroupArticles(g.groupId)
+    }),
+  )
 }
 
 async function toggleOpinion(card: ViewpointCard) {
@@ -749,8 +774,7 @@ onBeforeUnmount(() => {
 
   <main class="wrap" @click="searchOpen = false">
     <!-- 1·6. 메인 피드 -->
-    <template v-if="page === 'home'">
-      <section v-if="featuredIssues.length" class="hero" aria-labelledby="hero-title">
+    <section v-if="page === 'home' && featuredIssues.length" class="hero" aria-labelledby="hero-title">
         <div class="hero-head"><span>TOP ISSUES</span><h2 id="hero-title">화제성 높은 이슈</h2></div>
         <div class="hero-grid">
           <a v-for="(issue, index) in featuredIssues" :key="issue.id" :href="`?issue=${issue.id}`" @click.prevent="detail(issue)">
@@ -764,8 +788,9 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <div class="layout">
-        <section class="feed">
+    <!-- 홈과 상세가 같은 2단 레이아웃을 공유합니다(오른쪽 인기 검색어). -->
+    <div v-if="page !== 'search'" class="layout" :class="{ 'is-detail': page === 'detail' }">
+        <section v-if="page === 'home'" class="feed">
           <div class="title">
             <div>
               <button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button>
@@ -827,19 +852,7 @@ onBeforeUnmount(() => {
           </button>
         </section>
 
-        <aside v-if="popularKeywords.length" class="trends" aria-labelledby="trends-title">
-          <div class="trends-head"><span>REALTIME</span><h2 id="trends-title">인기 검색어</h2></div>
-          <ol class="trend-list">
-            <li v-for="(word, index) in popularKeywords" :key="word">
-              <button @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button>
-            </li>
-          </ol>
-        </aside>
-      </div>
-    </template>
-
-    <!-- 2·3. 이슈 상세 -->
-    <template v-else-if="page === 'detail'">
+      <div v-else class="detail-main">
       <section class="detail">
         <span>{{ selected.category }}</span>
         <h1>{{ selected.title }}</h1>
@@ -890,7 +903,7 @@ onBeforeUnmount(() => {
                   </a>
                   <div class="other-news">
                     <a
-                      v-for="article in card.articles.slice(1, card.previewCount)"
+                      v-for="article in card.articles.slice(1, TOP_COUNT)"
                       :key="article.id ?? `${article.source}-${article.headline}`"
                       :href="article.link || '#'"
                       target="_blank"
@@ -917,12 +930,15 @@ onBeforeUnmount(() => {
                     rel="noopener noreferrer"
                     @click="handleArticleClick($event, card, article)"
                   >
-                    <span class="source">
+                    <div>
+                      <span class="source">
                         <img v-if="pressLogo(article.source)" class="press-logo" :src="pressLogo(article.source)!" :alt="`${article.source} 로고`" />
                         <i v-else class="press-logo" :style="{ background: pressColor(article.source) }" aria-hidden="true">{{ pressInitial(article.source) }}</i>
                         {{ article.source }}
                       </span>
-                    <div><b>{{ articleTitle(article) }}</b><small>{{ article.time }} · {{ article.byline }}</small></div>
+                      <b>{{ articleTitle(article) }}</b>
+                      <small>{{ article.time }} · {{ article.byline }}</small>
+                    </div>
                     <em>↗</em>
                   </a>
                   <button v-if="canRevealMore(card)" class="opinion-more" @click="revealMore(card)">기사 더 보기 ↓</button>
@@ -940,10 +956,20 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
-    </template>
+      </div>
+
+        <aside v-if="popularKeywords.length" class="trends" aria-labelledby="trends-title">
+          <div class="trends-head"><span>REALTIME</span><h2 id="trends-title">인기 검색어</h2></div>
+          <ol class="trend-list">
+            <li v-for="(word, index) in popularKeywords" :key="word">
+              <button @click="clickPopularKeyword(word)"><em>{{ index + 1 }}</em><span>{{ word }}</span></button>
+            </li>
+          </ol>
+        </aside>
+    </div>
 
     <!-- 4-2. 검색 결과 -->
-    <template v-else>
+    <template v-if="page === 'search'">
       <section class="results">
         <label>SEARCH RESULTS</label>
         <h1>‘{{ keyword }}’ 검색 결과</h1>
