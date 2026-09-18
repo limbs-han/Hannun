@@ -85,6 +85,9 @@ services:
       # 잡 코드가 아니라 여기로 뺀다. 미설정이면 파케이라 지금 동작과 같다
       SILVER_WRITE: ${SILVER_WRITE:-parquet}
       SILVER_READ: ${SILVER_READ:-parquet}
+      # BE 토픽 발행 스위치. dry-run 이 기본이라 머지만으로는 운영에 보내지 않는다.
+      # 건수를 확인받은 뒤 .env 에 send 를 넣는다 (S15P21E105-69)
+      PUBLISH_MODE: ${PUBLISH_MODE:-dry-run}
       # Spark 클라이언트 기본 설정 폴더. 복제 수를 1 로 못 박는다 (S15P21E105-105)
       SPARK_CONF_DIR: /opt/spark-conf
       # 파이프라인 지표를 보낼 B 서버 Pushgateway (S15P21E105-79). 미설정이면 잡이
