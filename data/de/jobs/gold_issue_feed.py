@@ -83,6 +83,37 @@ def _blank_to_null(col):
     return F.when(F.trim(col) == "", None).otherwise(col)
 
 
+# 기사 첫머리의 발신지·기자명 표기. "(평창=연합뉴스) 임보연 기자 = " 형태로 붙고 정제본에도
+# 남아 있다 (실측 2026-09-18, 27%). 사실 문장이 아니라 브리핑에서 걷어낸다.
+# 기자명은 뒤에 "=" 가 올 때만 지운다 — 그 조건이 없으면 "김철수 기자가 말했다" 같은 문장의
+# 앞부분을 잘라 먹는다
+_DATELINE = r"^\s*[\(\[][^)\]]{1,40}[\)\]]\s*"
+_BYLINE = r"^\s*[가-힣]{2,5}\s*(?:기자|특파원|앵커)\s*=\s*"
+_LEAD_EQUALS = r"^\s*=\s*"
+
+BRIEFING_CHARS = 200
+
+
+def _fallback_briefing(col):
+    """DS2 요약이 없을 때 대표 기사 본문으로 채우는 임시값.
+
+    이름은 공통 사실 브리핑인데 실제로는 한 기사의 앞부분이므로 임시값이다. DS2 가 요약을
+    주면 merge_ds2 가 덮어쓴다. DS2 요약은 여러 기사에 공통으로 나오는 문장만 뽑는 방식이라
+    기사가 적은 이슈에서는 나오지 않고, 이슈의 33% 가 이 임시값으로 나간다
+    (실측 2026-09-18: 기사 3건 이슈 53%, 10건 이상 8%).
+
+    문장 경계에서 자른다. 글자 수로 자르면 "...민속예술 축제인 제67회" 처럼 중간에서 끊긴다.
+    200자 안에 문장이 하나도 안 끝나면 그때만 글자 수로 자른다.
+    """
+    text = F.regexp_replace(col, r"\s+", " ")
+    for pattern in (_DATELINE, _BYLINE, _LEAD_EQUALS):
+        text = F.regexp_replace(text, pattern, "")
+    head = F.substring(F.trim(text), 1, BRIEFING_CHARS)
+    # 탐욕적 매칭이라 200자 안의 마지막 종결 부호까지 잡는다
+    sentences = F.regexp_extract(head, r"^(.*[.!?])", 1)
+    return F.array(F.when(F.length(sentences) > 0, sentences).otherwise(head))
+
+
 def _briefing_column(raw):
     """commonFactsBriefing 을 배열로 맞춘다. 값이 없으면 null.
 
@@ -189,11 +220,20 @@ def build(spark, day, window=None):
         raise SystemExit(f"창 {window} 에 관점 분석 대상 기사가 없다")
     logger.info("DS 창 %s", window)
 
-    rep = articles.select(
-        F.col("article_id").alias("representative"),
-        F.col("category").alias("rep_category"),
-        F.col("title").alias("rep_title"),
-        F.col("content").alias("rep_content"))
+    # 대표 기사 본문은 정제본을 쓴다. 원문에는 연합뉴스 상단 요약·안내 문구가 섞여 있어
+    # (실측 2026-09-18, 기사의 25~27%) 앞 200자가 기사 내용이 아니라 그 문구로 채워졌다.
+    # DS 전처리가 그 문구를 이미 걷어낸다(정제본 실측 0%). 정제본이 없는 기사는 원문으로 둔다
+    clean = (spark.read.parquet(f"file://{DS_GOLD}/clean")
+             .select(F.col("article_id").alias("representative"), "content_clean"))
+    rep = (articles.select(
+                F.col("article_id").alias("representative"),
+                F.col("category").alias("rep_category"),
+                F.col("title").alias("rep_title"),
+                F.col("content").alias("rep_raw"))
+           .join(clean, "representative", "left")
+           .withColumn("rep_content", F.coalesce(
+               _blank_to_null(F.col("content_clean")), F.col("rep_raw")))
+           .drop("rep_raw", "content_clean"))
     member = articles.select(
         "article_id", "url", "publisher_id", "published_at")
 
@@ -206,10 +246,9 @@ def build(spark, day, window=None):
                 F.col("issue_id").alias("cluster_id"),
                 F.col("rep_category").alias("category"),
                 F.col("rep_title").alias("fact_summary"),
-                # 요약 코드가 없어 대표 기사 본문 앞부분을 넣는다. 발행기가 목업 표시를 붙인다.
-                # BE 가 List<String> 으로 받으므로 DS2 값과 같은 배열 모양으로 둔다
-                F.array(F.substring(F.regexp_replace(F.col("rep_content"), r"\s+", " "), 1, 200))
-                 .alias("common_facts_briefing"),
+                # DS2 요약이 없을 때 쓰는 임시값. BE 가 List<String> 으로 받으므로 DS2 값과
+                # 같은 배열 모양으로 둔다
+                _fallback_briefing(F.col("rep_content")).alias("common_facts_briefing"),
                 F.col("summarized_at").alias("clustered_at"),
                 F.col("url").alias("link"),
                 # DS 관점 분류가 없어 비워 둔다. 표에는 사실만 담는다
