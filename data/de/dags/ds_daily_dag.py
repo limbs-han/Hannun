@@ -51,7 +51,23 @@ with DAG(
         ),
     )
 
-    # 발행(publish_clustering)은 아직 붙이지 않는다. DS2 관점 라벨이 비어 있어 BE 필수
-    # 필드를 채우지 못하고, 운영 토픽으로 보내기 전에 건수를 확인받는 규칙이 있다.
-    # 첫 발행을 손으로 한 뒤 여기에 이어 붙인다 (S15P21E105-69)
-    # 태스크가 하나뿐이라 잇는 줄이 없다
+    # gold 표를 BE 토픽으로 발행한다. DS2 관점 라벨이 채워져(2026-09-18 확인) 필수 필드
+    # 점검을 통과하므로 목업 옵션 없이 보낸다.
+    #
+    # **기본값은 시험 실행이다.** 머지만으로 운영 토픽에 자동 발행이 시작되면 안 된다.
+    # 건수를 확인받은 뒤 .env 에 PUBLISH_MODE=send 를 넣고 컨테이너를 다시 만들어 켠다.
+    # 되돌리기는 그 줄을 지우는 것이다.
+    #
+    # 대기줄에 세우지 않는다 — Spark 를 쓰지 않고 WebHDFS 로 읽어 가볍다.
+    # 날짜는 gold 파티션과 같아야 하므로 한국 날짜를 준다 (gold 잡도 한국 날짜로 쓴다)
+    publish = BashOperator(
+        task_id="publish_clustering",
+        # 이슈 411개를 초당 50건으로 보내면 9초다. 늦어지면 다음 배정 전에 끊는다
+        execution_timeout=timedelta(minutes=5),
+        bash_command=(
+            "python /opt/airflow/jobs/publish_clustering.py "
+            "$(TZ=Asia/Seoul date +%F) --${PUBLISH_MODE:-dry-run}"
+        ),
+    )
+
+    gold >> publish
