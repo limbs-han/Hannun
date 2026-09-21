@@ -81,6 +81,26 @@ public class IssueCommandService {
         return CATEGORY_MERGE.getOrDefault(category, category);
     }
 
+    // 재클러스터링으로 기사가 다른 클러스터로 옮겨가서 이 clusterId(옛날 이슈)의 실제 기사 수가 바뀐
+    // 경우 전용 - applyClusteringResult와 달리 이 clusterId 자체에 대한 새 클러스터링 결과가 온 게
+    // 아니므로 clusteredAt/category/factSummary는 안 건드리고 카운트만 실측치로 다시 맞춤.
+    // articleCount가 0이 되면 findLatestFeed 등의 article_count>0 필터에 자연히 걸려 피드/검색에서
+    // 안 보이게 됨 - 옛날에 이슈가 있었다는 사실 자체를 지우진 않되 노출만 막는 방식.
+    @Caching(evict = {
+            @CacheEvict(cacheNames = IssueQueryService.ISSUE_FEED_CACHE, allEntries = true),
+            @CacheEvict(cacheNames = IssueQueryService.ISSUE_DETAIL_CACHE, key = "#clusterId + ':positive:0'"),
+            @CacheEvict(cacheNames = IssueQueryService.ISSUE_DETAIL_CACHE, key = "#clusterId + ':neutral:0'"),
+            @CacheEvict(cacheNames = IssueQueryService.ISSUE_DETAIL_CACHE, key = "#clusterId + ':negative:0'")
+    })
+    public void refreshCountsForClusterId(Long clusterId) {
+        issueRepository.findById(clusterId).ifPresent(issue -> {
+            ArticleClusterAggregate aggregate = articleQueryService.aggregateByClusterId(clusterId);
+            int articleCount = aggregate.articleCount() == null ? 0 : aggregate.articleCount().intValue();
+            int pressCount = aggregate.pressCount() == null ? 0 : aggregate.pressCount().intValue();
+            issue.refreshCounts(pressCount, articleCount, aggregate.firstReportedAt(), aggregate.lastReportedAt());
+        });
+    }
+
     @Scheduled(cron = "0 */15 * * * *")
     @CacheEvict(cacheNames = IssueQueryService.ISSUE_FEED_CACHE, allEntries = true)
     public void refreshTrendingScores() {

@@ -91,4 +91,20 @@ public class Issue {
         this.lastReportedAt = lastReportedAt;
         this.clusteredAt = clusteredAt;
     }
+
+    // 재클러스터링으로 기사가 다른 클러스터로 옮겨가서 이 이슈의 실제 기사 수가 바뀐 경우 전용 -
+    // clusteredAt/category/factSummary는 이 이슈에 대한 새 클러스터링 결과가 아니므로 안 건드림
+    // (isStale 비교 기준도 그대로 유지). firstReportedAt/lastReportedAt은 null이면(기사 0건이 됨)
+    // NOT NULL 컬럼이라 덮어쓰지 않고 예전 값 유지 - 어차피 articleCount=0이면 피드에서 안 보임.
+    public void refreshCounts(int pressCount, int articleCount,
+                               OffsetDateTime firstReportedAt, OffsetDateTime lastReportedAt) {
+        this.pressCount = pressCount;
+        this.articleCount = articleCount;
+        if (firstReportedAt != null) {
+            this.firstReportedAt = firstReportedAt;
+        }
+        if (lastReportedAt != null) {
+            this.lastReportedAt = lastReportedAt;
+        }
+    }
 }

@@ -50,6 +50,7 @@ public class ClusteringCompletedConsumer {
 
         if (assignments != null) {
             Set<Long> touchedGroupIds = new LinkedHashSet<>();
+            Set<Long> previousClusterIds = new LinkedHashSet<>();
 
             for (int i = 0; i < assignments.size(); i += CHUNK_SIZE) {
                 List<ArticleAssignment> chunk = assignments.subList(i, Math.min(i + CHUNK_SIZE, assignments.size()));
@@ -60,10 +61,17 @@ public class ClusteringCompletedConsumer {
 
                 Map<String, Long> groupIdsByLabel = groupsByLabel.entrySet().stream()
                         .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getId()));
-                articleCommandService.updateClusterAssignments(message.clusterId(), chunk, groupIdsByLabel);
+                ArticleCommandService.ReassignmentResult result =
+                        articleCommandService.updateClusterAssignments(message.clusterId(), chunk, groupIdsByLabel);
+                // 기사가 옮겨오기 전 소속돼있던 관점그룹도 같이 재계산 대상에 포함 - 그래야 옛날
+                // 관점그룹의 article_count가 "기사 빠져나감"을 반영해서 실측치로 갱신됨.
+                touchedGroupIds.addAll(result.previousViewpointGroupIds());
+                previousClusterIds.addAll(result.previousClusterIds());
             }
 
             viewpointGroupCommandService.refreshAggregates(touchedGroupIds);
+            previousClusterIds.remove(message.clusterId());
+            previousClusterIds.forEach(issueCommandService::refreshCountsForClusterId);
         }
 
         issueCommandService.applyClusteringResult(message.clusterId(), message.category(), message.factSummary(),
