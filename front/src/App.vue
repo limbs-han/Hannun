@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   httpApi,
+  STANCES,
   type ApiStance,
   type ArticleItem,
   type FeedSort,
@@ -21,7 +22,6 @@ type ViewArticle = { id?: number; source: string; headline: string; byline: stri
 type PageName = 'home' | 'detail' | 'search'
 type NavigationState = { __hannun: true; page: PageName; issueId?: number; keyword?: string }
 type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; articles: ViewArticle[] }
-type CalendarDay = { key: string; date: string; label: number | null; selected: boolean; inRange: boolean; isStart: boolean; isEnd: boolean }
 
 // BE 가 내려주는 category 값과 글자 단위로 일치해야 합니다 — 그대로 쿼리 파라미터로 나갑니다.
 // '산업'은 '경제'로 통합하기로 해서 탭에 두지 않습니다(실제 통합은 수집·적재 단계에서 처리).
@@ -54,13 +54,6 @@ const feedLoading = ref(false)
 const feedHasNext = ref(false)
 const feedCursorValue = ref<number | string | null>(null)
 const feedCursorId = ref<number | null>(null)
-const dateFromInput = ref('')
-const dateToInput = ref('')
-const appliedDateFrom = ref('')
-const appliedDateTo = ref('')
-const dateRangeError = ref('')
-const datePickerOpen = ref(false)
-const calendarViewDate = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
 const results = ref<Issue[]>([])
 const searchLoading = ref(false)
 const searchTopIssues = ref<Issue[]>([])
@@ -77,6 +70,7 @@ let feedObserver: IntersectionObserver | null = null
 let searchObserver: IntersectionObserver | null = null
 let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
 let relatedSearchRequestId = 0
+let detailRequestId = 0
 
 // 화제성 상위 2건은 맨 위 블럭으로 빼고, 목록에서는 중복 제거합니다.
 // 3건 미만이면 블럭을 띄우지 않습니다 — 아래 목록이 비어버리기 때문입니다.
@@ -88,28 +82,6 @@ const featuredIssues = computed(() =>
 const feed = computed(() => {
   const top = new Set(featuredIssues.value.map((issue) => issue.id))
   return issues.value.filter((issue) => !top.has(issue.id))
-})
-const dateRangeActive = computed(() => Boolean(appliedDateFrom.value && appliedDateTo.value))
-const dateRangeLabel = computed(() => {
-  if (dateFromInput.value && dateToInput.value) return `${dateFromInput.value} – ${dateToInput.value}`
-  if (dateFromInput.value) return `${dateFromInput.value} – 종료일 선택`
-  return '기간 선택'
-})
-const calendarTitle = computed(() => `${calendarViewDate.value.getFullYear()}년 ${calendarViewDate.value.getMonth() + 1}월`)
-const calendarDays = computed<CalendarDay[]>(() => {
-  const year = calendarViewDate.value.getFullYear()
-  const month = calendarViewDate.value.getMonth()
-  const firstWeekday = new Date(year, month, 1).getDay()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const cellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7
-  return Array.from({ length: cellCount }, (_, index) => {
-    const day = index - firstWeekday + 1
-    if (day < 1 || day > daysInMonth) return { key: `blank-${index}`, date: '', label: null, selected: false, inRange: false, isStart: false, isEnd: false }
-    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    const isStart = date === dateFromInput.value
-    const isEnd = date === dateToInput.value
-    return { key: date, date, label: day, selected: isStart || isEnd, inRange: Boolean(dateToInput.value && date > dateFromInput.value && date < dateToInput.value), isStart, isEnd }
-  })
 })
 const hasNextViewpointPage = computed(() => {
   const info = detailData.value?.viewpointGroupPage
@@ -155,9 +127,7 @@ async function loadFeed(reset = false) {
   try {
     const apiSort: FeedSort = sort.value === '최신순' ? 'latest' : 'trending'
     const params = { category: category.value === '전체' ? 'ALL' : category.value, sort: apiSort, cursorValue: reset ? null : feedCursorValue.value, cursorId: reset ? null : feedCursorId.value }
-    const response = dateRangeActive.value
-      ? await api.getIssuesByDateRange({ ...params, from: appliedDateFrom.value, to: appliedDateTo.value })
-      : await api.getIssues(params)
+    const response = await api.getIssues(params)
     const mapped = response.items.map(mapIssue)
     issues.value = reset ? mapped : [...issues.value, ...mapped.filter((item) => !issues.value.some((existing) => existing.id === item.id))]
     feedCursorValue.value = response.nextCursorValue
@@ -181,52 +151,6 @@ function loadMoreFeed() {
 async function selectCategory(value: string) { category.value = value; home(); await loadFeed(true) }
 async function selectSort(value: string) { sort.value = value; await loadFeed(true) }
 
-/* ---------- 6. 기간 선택 캘린더 ---------- */
-async function applyDateRange() {
-  if (!dateFromInput.value || !dateToInput.value) { dateRangeError.value = '시작일과 종료일을 모두 선택해주세요.'; return }
-  if (dateFromInput.value > dateToInput.value) { dateRangeError.value = '시작일은 종료일보다 늦을 수 없습니다.'; return }
-  dateRangeError.value = ''
-  appliedDateFrom.value = dateFromInput.value
-  appliedDateTo.value = dateToInput.value
-  await loadFeed(true)
-  datePickerOpen.value = false
-}
-
-async function clearDateRange() {
-  dateFromInput.value = ''
-  dateToInput.value = ''
-  appliedDateFrom.value = ''
-  appliedDateTo.value = ''
-  dateRangeError.value = ''
-  datePickerOpen.value = false
-  await loadFeed(true)
-}
-
-function toggleDatePicker() {
-  datePickerOpen.value = !datePickerOpen.value
-  if (datePickerOpen.value && dateFromInput.value) {
-    const [year, month] = dateFromInput.value.split('-').map(Number)
-    calendarViewDate.value = new Date(year, month - 1, 1)
-  }
-}
-
-function changeCalendarMonth(offset: number) {
-  calendarViewDate.value = new Date(calendarViewDate.value.getFullYear(), calendarViewDate.value.getMonth() + offset, 1)
-}
-
-function selectCalendarDate(value: string) {
-  dateRangeError.value = ''
-  if (!dateFromInput.value || dateToInput.value) { dateFromInput.value = value; dateToInput.value = ''; return }
-  if (value < dateFromInput.value) { dateToInput.value = dateFromInput.value; dateFromInput.value = value; return }
-  dateToInput.value = value
-}
-
-function resetCalendarSelection() {
-  dateFromInput.value = ''
-  dateToInput.value = ''
-  dateRangeError.value = ''
-}
-
 /* ---------- 2. 브리핑 · 관점 카드 ---------- */
 const briefingFacts = computed(() => detailData.value?.commonFactsBriefing ?? [])
 
@@ -239,6 +163,9 @@ const viewpointCards = computed<ViewpointCard[]>(() => {
   }
   return []
 })
+
+// 관점이 하나뿐이면 'VIEWPOINT 01 / 기타 관점' 머리말이 구분해 줄 상대가 없어서 지웁니다.
+const singleViewpoint = computed(() => viewpointCards.value.length === 1)
 
 /* ---------- 언론사 로고 ---------- */
 // src/assets/press/<언론사명>.png|svg|jpg|webp 를 두면 자동으로 잡힙니다.
@@ -319,7 +246,7 @@ function applyNavigation(state: NavigationState) {
 function navigate(state: NavigationState) { applyNavigation(state); window.history.pushState(state, '') }
 function home() { navigate({ __hannun: true, page: 'home' }) }
 
-// 로고 클릭 — 카테고리·정렬·기간·검색어까지 처음 들어온 상태로 되돌립니다.
+// 로고 클릭 — 카테고리·정렬·검색어까지 처음 들어온 상태로 되돌립니다.
 // home() 은 selectCategory() 도 쓰므로 따로 둡니다(거기서 초기화하면 카테고리 선택이 바로 풀립니다).
 async function resetToHome() {
   category.value = '전체'
@@ -327,42 +254,66 @@ async function resetToHome() {
   query.value = ''
   keyword.value = ''
   searchOpen.value = false
-  dateFromInput.value = ''
-  dateToInput.value = ''
-  appliedDateFrom.value = ''
-  appliedDateTo.value = ''
-  dateRangeError.value = ''
-  datePickerOpen.value = false
   home()
   await loadFeed(true)
 }
 
 function detail(issue: Issue, referrer: 'MAIN_FEED' | 'SEARCH' = 'MAIN_FEED') {
   selected.value = issue
+  // 직전에 열었던 이슈의 관점 비율·기사 목록이 새 이슈에 잠깐 노출되지 않도록 즉시 비웁니다.
+  detailData.value = null
+  groupArticles.value = {}
+  groupCursor.value = {}
   navigate({ __hannun: true, page: 'detail', issueId: issue.id })
   sendLog('VIEW_ISSUE', { issueId: issue.id, category: issue.category, referrer })
-  void loadIssueDetail(issue.id, 'neutral')
+  void loadIssueDetail(issue.id, 'neutral', 0, false, true)
 }
 
-async function loadIssueDetail(issueId: number, selectedApiStance: ApiStance, groupPage = 0, append = false) {
-  if (detailLoading.value) return
+// 서버는 요청한 관점에 기사가 없어도 빈 목록을 그대로 돌려줍니다. 중립이 0%인 이슈를
+// 열면 첫 화면이 통째로 비어서, 기사가 가장 많은 관점을 찾아 한 번만 다시 부릅니다.
+function fallbackStance(response: IssueDetailResponse, requested: ApiStance): ApiStance | null {
+  if (response.viewpointGroups.length) return null
+  let best: ApiStance | null = null
+  for (const candidate of STANCES) {
+    if (candidate === requested) continue
+    const ratio = response.stanceRatio?.[candidate] ?? 0
+    if (ratio > 0 && ratio > (best ? response.stanceRatio?.[best] ?? 0 : 0)) best = candidate
+  }
+  return best
+}
+
+async function loadIssueDetail(issueId: number, selectedApiStance: ApiStance, groupPage = 0, append = false, autoFallback = false) {
+  const requestId = ++detailRequestId
   detailLoading.value = true
+  let retryStance: ApiStance | null = null
   try {
     const response = await api.getIssue(issueId, selectedApiStance, groupPage)
+    // 빠르게 관점을 바꿨을 때 늦게 도착한 이전 응답이 현재 탭과 기사 목록을 덮지 못하게 합니다.
+    if (requestId !== detailRequestId) return
+    // 관점 비율은 이슈 전체의 값이므로 탭 요청마다 달라지면 안 됩니다. 최초 응답값을 유지합니다.
+    const previousRatio = detailData.value?.issueId === response.issueId ? detailData.value.stanceRatio : null
+    if (previousRatio) response.stanceRatio = previousRatio
     if (append && detailData.value) response.viewpointGroups = [...detailData.value.viewpointGroups, ...response.viewpointGroups]
     detailData.value = response
     selected.value = { id: response.issueId, category: response.category, title: response.factSummary, press: response.pressCount, articles: response.articleCount, summary: response.factSummary, time: formatDate(response.lastReportedAt) }
-    stance.value = apiToStance[response.selectedStance]
+    // 서버 selectedStance가 지연되거나 잘못 내려와도 사용자가 누른 관점을 선택 상태의 기준으로 삼습니다.
+    stance.value = apiToStance[selectedApiStance]
     if (!append) { groupArticles.value = {}; groupCursor.value = {}; expandedCards.value = []; revealed.value = {} }
+    // 긍정·부정 한쪽이 100% 면 누르기 전에도 그 사실이 곧바로 보여야 합니다(중립 100% 는 바 자체를 숨깁니다).
+    if (!append && ((response.stanceRatio?.positive ?? 0) === 1 || (response.stanceRatio?.negative ?? 0) === 1)) hasRevealedRatio.value = true
+    if (autoFallback && !append && groupPage === 0) retryStance = fallbackStance(response, selectedApiStance)
   } catch {
-    if (!append) detailData.value = null
+    if (requestId === detailRequestId && !append) detailData.value = null
   } finally {
-    detailLoading.value = false
+    if (requestId === detailRequestId) detailLoading.value = false
   }
+  // 재시도는 사용자가 직접 고른 관점에는 걸지 않습니다(빈 관점을 눌렀을 때 튕기면 안 됩니다).
+  if (retryStance) { await loadIssueDetail(issueId, retryStance); return }
   void fillTopSlots()
 }
 
 async function choose(value: Stance) {
+  if (detailLoading.value || stancePercent(value) === 0 || stance.value === value) return
   stance.value = value
   hasRevealedRatio.value = true
   expandedCards.value = []
@@ -372,8 +323,19 @@ async function choose(value: Stance) {
 
 function stancePercent(value: Stance) {
   const ratio = detailData.value?.stanceRatio?.[stanceToApi[value]]
-  return typeof ratio === 'number' ? Math.round(ratio * 100) : 0
+  if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return 0
+  // API가 0~1 비율 또는 0~100 퍼센트 어느 형식으로 내려와도 동일하게 표시합니다.
+  const percent = ratio <= 1 ? ratio * 100 : ratio
+  return Math.min(100, Math.max(0, Math.round(percent)))
 }
+
+// 중립 기사만 존재하면 선택할 다른 관점이 없으므로 바를 숨기고 중립 기사 목록을 바로 보여줍니다.
+// 합계의 반올림 오차와 관계없이 긍정·부정이 0인지로 판별합니다.
+const neutralOnly = computed(() =>
+  stancePercent('중립') > 0
+  && stancePercent('긍정') === 0
+  && stancePercent('부정') === 0,
+)
 
 function stanceSegmentClass(value: Stance) {
   const percent = stancePercent(value)
@@ -610,13 +572,12 @@ function handlePopState(event: PopStateEvent) {
   const state = event.state as NavigationState | null
   if (!state?.__hannun) return
   applyNavigation(state)
-  if (state.page === 'detail' && state.issueId) void loadIssueDetail(state.issueId, 'neutral')
+  if (state.page === 'detail' && state.issueId) void loadIssueDetail(state.issueId, 'neutral', 0, false, true)
   if (state.page === 'search') void loadSearch(true)
 }
 
 function handleDocumentClick(event: MouseEvent) {
   if (searchOpen.value && !searchBox.value?.contains(event.target as Node)) searchOpen.value = false
-  if (datePickerOpen.value && !(event.target as Element).closest('.date-range-filter')) datePickerOpen.value = false
 }
 
 watch(feedSentinel, (element, previous) => { if (previous) feedObserver?.unobserve(previous); if (element) feedObserver?.observe(element) })
@@ -725,31 +686,6 @@ onBeforeUnmount(() => {
               <button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button>
               <button :class="{ active: sort === '최신순' }" @click="selectSort('최신순')">최신순</button>
             </div>
-            <form class="date-range-filter" @submit.prevent="applyDateRange">
-              <span>{{ dateRangeActive ? '기간 기준' : '실시간 기준' }}</span>
-              <button class="date-picker-trigger" type="button" :aria-expanded="datePickerOpen" @click="toggleDatePicker">{{ dateRangeLabel }} <b>▾</b></button>
-              <button v-if="dateRangeActive" class="date-range-reset" type="button" :disabled="feedLoading" @click="clearDateRange">초기화</button>
-              <div v-if="datePickerOpen" class="date-picker" @click.stop>
-                <div class="date-picker-head">
-                  <button type="button" aria-label="이전 달" @click="changeCalendarMonth(-1)">‹</button>
-                  <strong>{{ calendarTitle }}</strong>
-                  <button type="button" aria-label="다음 달" @click="changeCalendarMonth(1)">›</button>
-                </div>
-                <div class="date-picker-week"><span v-for="day in ['일', '월', '화', '수', '목', '금', '토']" :key="day">{{ day }}</span></div>
-                <div class="date-picker-days" :class="{ ranged: dateFromInput && dateToInput }">
-                  <template v-for="day in calendarDays" :key="day.key">
-                    <button v-if="day.label" type="button" :class="{ selected: day.selected, 'in-range': day.inRange, start: day.isStart, end: day.isEnd }" @click="selectCalendarDate(day.date)">{{ day.label }}</button>
-                    <span v-else></span>
-                  </template>
-                </div>
-                <p>{{ dateFromInput ? (dateToInput ? `${dateFromInput}부터 ${dateToInput}까지` : '종료일을 선택해주세요.') : '시작일을 선택해주세요.' }}</p>
-                <div class="date-picker-actions">
-                  <button type="button" @click="resetCalendarSelection">다시 선택</button>
-                  <button type="submit" :disabled="feedLoading || !dateFromInput || !dateToInput">적용</button>
-                </div>
-              </div>
-              <small v-if="dateRangeError" role="alert">{{ dateRangeError }}</small>
-            </form>
           </div>
 
           <article v-for="issue in feed" :key="issue.id">
@@ -771,8 +707,7 @@ onBeforeUnmount(() => {
           <div v-if="feedLoading && !feed.length" class="loading">뉴스를 불러오는 중입니다…</div>
           <div v-else-if="!feed.length" class="empty">
             <b>표시할 이슈가 없습니다.</b>
-            <p v-if="dateRangeActive">{{ appliedDateFrom }} ~ {{ appliedDateTo }} 기간에 해당하는 이슈가 없습니다. 기간을 넓혀보세요.</p>
-            <p v-else-if="category !== '전체'">‘{{ category }}’ 카테고리에 표시할 이슈가 없습니다. 다른 카테고리를 선택해보세요.</p>
+            <p v-if="category !== '전체'">‘{{ category }}’ 카테고리에 표시할 이슈가 없습니다. 다른 카테고리를 선택해보세요.</p>
             <p v-else>아직 수집된 이슈가 없습니다. 잠시 후 다시 확인해주세요.</p>
           </div>
 
@@ -786,13 +721,14 @@ onBeforeUnmount(() => {
         <span>{{ selected.category }}</span>
         <h1>{{ selected.title }}</h1>
         <p>최초 보도 {{ formatDate(detailData?.firstReportedAt) }}　 최근 보도 {{ formatDate(detailData?.lastReportedAt) }}　 {{ selected.press }}개 언론사　 기사 {{ selected.articles }}건</p>
-        <div class="stanceBtns detail-stance" :class="{ 'ratio-mode': hasRevealedRatio }" aria-label="관점 선택">
+        <div v-if="detailData && !neutralOnly" class="stanceBtns detail-stance" :class="{ 'ratio-mode': hasRevealedRatio }" aria-label="관점 선택">
           <button
             v-for="item in (['긍정', '중립', '부정'] as Stance[])"
             :key="item"
             :class="stanceSegmentClass(item)"
             :style="{ '--ratio': stancePercent(item) }"
             :aria-label="hasRevealedRatio ? `${item} ${stancePercent(item)}%` : item"
+            :disabled="detailLoading || stancePercent(item) === 0"
             @click="choose(item)"
           >
             <span v-if="!hasRevealedRatio || stancePercent(item) > 0">{{ item }}</span>
@@ -815,8 +751,8 @@ onBeforeUnmount(() => {
           <div v-if="stance" class="group">
             <div class="opinion-stack">
               <article v-for="card in viewpointCards" :key="card.groupId ?? card.number" class="opinion-card">
-                <div class="opinion-head"><span>VIEWPOINT {{ card.number }}</span><small>{{ card.press }}개 언론사 · 기사 {{ card.articleCount }}건</small></div>
-                <h3>{{ card.title }}</h3>
+                <div class="opinion-head"><span v-if="!singleViewpoint">VIEWPOINT {{ card.number }}</span><small>{{ card.press }}개 언론사 · 기사 {{ card.articleCount }}건</small></div>
+                <h3 v-if="!singleViewpoint">{{ card.title }}</h3>
                 <p v-if="card.description" class="opinion-summary">{{ card.description }}</p>
 
                 <div v-if="card.articles.length" class="opinion-news-grid">
