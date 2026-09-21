@@ -70,6 +70,7 @@ let feedObserver: IntersectionObserver | null = null
 let searchObserver: IntersectionObserver | null = null
 let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
 let relatedSearchRequestId = 0
+let detailRequestId = 0
 
 // 화제성 상위 2건은 맨 위 블럭으로 빼고, 목록에서는 중복 제거합니다.
 // 3건 미만이면 블럭을 띄우지 않습니다 — 아래 목록이 비어버리기 때문입니다.
@@ -259,6 +260,10 @@ async function resetToHome() {
 
 function detail(issue: Issue, referrer: 'MAIN_FEED' | 'SEARCH' = 'MAIN_FEED') {
   selected.value = issue
+  // 직전에 열었던 이슈의 관점 비율·기사 목록이 새 이슈에 잠깐 노출되지 않도록 즉시 비웁니다.
+  detailData.value = null
+  groupArticles.value = {}
+  groupCursor.value = {}
   navigate({ __hannun: true, page: 'detail', issueId: issue.id })
   sendLog('VIEW_ISSUE', { issueId: issue.id, category: issue.category, referrer })
   void loadIssueDetail(issue.id, 'neutral', 0, false, true)
@@ -278,23 +283,29 @@ function fallbackStance(response: IssueDetailResponse, requested: ApiStance): Ap
 }
 
 async function loadIssueDetail(issueId: number, selectedApiStance: ApiStance, groupPage = 0, append = false, autoFallback = false) {
-  if (detailLoading.value) return
+  const requestId = ++detailRequestId
   detailLoading.value = true
   let retryStance: ApiStance | null = null
   try {
     const response = await api.getIssue(issueId, selectedApiStance, groupPage)
+    // 빠르게 관점을 바꿨을 때 늦게 도착한 이전 응답이 현재 탭과 기사 목록을 덮지 못하게 합니다.
+    if (requestId !== detailRequestId) return
+    // 관점 비율은 이슈 전체의 값이므로 탭 요청마다 달라지면 안 됩니다. 최초 응답값을 유지합니다.
+    const previousRatio = detailData.value?.issueId === response.issueId ? detailData.value.stanceRatio : null
+    if (previousRatio) response.stanceRatio = previousRatio
     if (append && detailData.value) response.viewpointGroups = [...detailData.value.viewpointGroups, ...response.viewpointGroups]
     detailData.value = response
     selected.value = { id: response.issueId, category: response.category, title: response.factSummary, press: response.pressCount, articles: response.articleCount, summary: response.factSummary, time: formatDate(response.lastReportedAt) }
-    stance.value = apiToStance[response.selectedStance]
+    // 서버 selectedStance가 지연되거나 잘못 내려와도 사용자가 누른 관점을 선택 상태의 기준으로 삼습니다.
+    stance.value = apiToStance[selectedApiStance]
     if (!append) { groupArticles.value = {}; groupCursor.value = {}; expandedCards.value = []; revealed.value = {} }
     // 긍정·부정 한쪽이 100% 면 누르기 전에도 그 사실이 곧바로 보여야 합니다(중립 100% 는 바 자체를 숨깁니다).
     if (!append && ((response.stanceRatio?.positive ?? 0) === 1 || (response.stanceRatio?.negative ?? 0) === 1)) hasRevealedRatio.value = true
     if (autoFallback && !append && groupPage === 0) retryStance = fallbackStance(response, selectedApiStance)
   } catch {
-    if (!append) detailData.value = null
+    if (requestId === detailRequestId && !append) detailData.value = null
   } finally {
-    detailLoading.value = false
+    if (requestId === detailRequestId) detailLoading.value = false
   }
   // 재시도는 사용자가 직접 고른 관점에는 걸지 않습니다(빈 관점을 눌렀을 때 튕기면 안 됩니다).
   if (retryStance) { await loadIssueDetail(issueId, retryStance); return }
@@ -302,6 +313,7 @@ async function loadIssueDetail(issueId: number, selectedApiStance: ApiStance, gr
 }
 
 async function choose(value: Stance) {
+  if (detailLoading.value || stancePercent(value) === 0 || stance.value === value) return
   stance.value = value
   hasRevealedRatio.value = true
   expandedCards.value = []
@@ -311,11 +323,19 @@ async function choose(value: Stance) {
 
 function stancePercent(value: Stance) {
   const ratio = detailData.value?.stanceRatio?.[stanceToApi[value]]
-  return typeof ratio === 'number' ? Math.round(ratio * 100) : 0
+  if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return 0
+  // API가 0~1 비율 또는 0~100 퍼센트 어느 형식으로 내려와도 동일하게 표시합니다.
+  const percent = ratio <= 1 ? ratio * 100 : ratio
+  return Math.min(100, Math.max(0, Math.round(percent)))
 }
 
-// 중립 100% 는 대비할 관점도, 눌러서 옮겨 갈 관점도 없어서 바 자체를 숨깁니다.
-const neutralOnly = computed(() => stancePercent('중립') === 100)
+// 중립 기사만 존재하면 선택할 다른 관점이 없으므로 바를 숨기고 중립 기사 목록을 바로 보여줍니다.
+// 합계의 반올림 오차와 관계없이 긍정·부정이 0인지로 판별합니다.
+const neutralOnly = computed(() =>
+  stancePercent('중립') > 0
+  && stancePercent('긍정') === 0
+  && stancePercent('부정') === 0,
+)
 
 function stanceSegmentClass(value: Stance) {
   const percent = stancePercent(value)
@@ -701,14 +721,14 @@ onBeforeUnmount(() => {
         <span>{{ selected.category }}</span>
         <h1>{{ selected.title }}</h1>
         <p>최초 보도 {{ formatDate(detailData?.firstReportedAt) }}　 최근 보도 {{ formatDate(detailData?.lastReportedAt) }}　 {{ selected.press }}개 언론사　 기사 {{ selected.articles }}건</p>
-        <div v-if="!neutralOnly" class="stanceBtns detail-stance" :class="{ 'ratio-mode': hasRevealedRatio }" aria-label="관점 선택">
+        <div v-if="detailData && !neutralOnly" class="stanceBtns detail-stance" :class="{ 'ratio-mode': hasRevealedRatio }" aria-label="관점 선택">
           <button
             v-for="item in (['긍정', '중립', '부정'] as Stance[])"
             :key="item"
             :class="stanceSegmentClass(item)"
             :style="{ '--ratio': stancePercent(item) }"
             :aria-label="hasRevealedRatio ? `${item} ${stancePercent(item)}%` : item"
-            :disabled="stancePercent(item) === 0"
+            :disabled="detailLoading || stancePercent(item) === 0"
             @click="choose(item)"
           >
             <span v-if="!hasRevealedRatio || stancePercent(item) > 0">{{ item }}</span>
