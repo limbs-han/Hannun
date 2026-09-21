@@ -201,6 +201,137 @@
         },
         "textMode": "name"
       }
+    },
+    {
+      "type": "timeseries",
+      "title": "관점 분석 실패율",
+      "description": "관점 라벨이 \"기타\"거나 비어 있는 기사 비율. DS2 가 관점을 못 뽑고 흘려보낸 몫이다. 2026-09-21 기준 0.71 — 열 건 중 일곱 건이 실패다. 내려가야 좋다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_viewpoint_other_ratio",
+          "legendFormat": "기타·빈 라벨",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "성향 중립 쏠림",
+      "description": "관점이 실제로 붙은 기사 중 성향이 중립인 비율. 분석이 실패하면 중립을 돌려주므로 실패가 중립으로 위장된다. 2026-09-21 기준 0.84. 관점 실패율과 같이 움직이면 진짜 중립이 아니라 실패다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_stance_neutral_ratio",
+          "legendFormat": "중립 비율",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DS2 요약 결측",
+      "description": "DS2 가 공통 사실 브리핑을 안 줘서 대표 기사 본문 앞부분으로 채운 비율. 2026-09-21 기준 0.28. 1 에 가까워지면 브리핑이 사실상 기사 발췌다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_briefing_fallback_ratio",
+          "legendFormat": "폴백으로 채운 비율",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "가장 큰 이슈",
+      "description": "한 이슈에 묶인 기사 수의 최댓값. 갑자기 뛰면 서로 다른 사건이 한 덩어리로 뭉쳤다는 신호다. 평소 40~160 사이.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_issue_size_max",
+          "legendFormat": "기사 수",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "어제 번호 이어받음",
+      "description": "발행 직전에 어제 쓰던 이슈 번호를 되찾은 개수 (S15P21E105-129). 0 이 계속 나오면 이어붙이기가 죽은 것이고, 그러면 같은 사건이 날마다 새 이슈로 BE 에 쌓인다. 그것 말고는 알아챌 길이 없다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_publish_carried_ids",
+          "legendFormat": "이어받은 이슈 수",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }
