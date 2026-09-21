@@ -13,9 +13,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -72,20 +74,42 @@ public class ArticleCommandService {
         jdbcTemplate.update(sql, args.toArray());
     }
 
+    // 기사가 재클러스터링으로 다른 클러스터/관점그룹으로 옮겨갈 때, 옮겨가기 전 소속(clusterId/
+    // viewpointGroupId)을 같이 돌려줌 - 옛날 클러스터/관점그룹은 이 메시지만으론 갱신 대상이 아니라서
+    // (이 메시지는 새 clusterId 기준으로만 옴) 별도로 카운트 재계산을 걸어주지 않으면 기사가 다 빠져나가도
+    // article_count가 예전 값 그대로 박제됨(피드에 "기사 있다"고 뜨는데 실제론 0건인 버그의 원인).
+    public record ReassignmentResult(Set<Long> previousClusterIds, Set<Long> previousViewpointGroupIds) {
+        public static ReassignmentResult empty() {
+            return new ReassignmentResult(Set.of(), Set.of());
+        }
+    }
+
     @Transactional
-    public void updateClusterAssignments(Long clusterId, List<ArticleAssignment> assignments,
-                                          Map<String, Long> groupIdsByLabel) {
+    public ReassignmentResult updateClusterAssignments(Long clusterId, List<ArticleAssignment> assignments,
+                                                         Map<String, Long> groupIdsByLabel) {
         if (assignments == null || assignments.isEmpty()) {
-            return;
+            return ReassignmentResult.empty();
         }
 
         Map<String, ArticleAssignment> assignmentByLink = assignments.stream()
                 .collect(Collectors.toMap(ArticleAssignment::link, Function.identity()));
 
         List<Article> articles = articleRepository.findAllByLinkIn(assignmentByLink.keySet());
+        Set<Long> previousClusterIds = new LinkedHashSet<>();
+        Set<Long> previousViewpointGroupIds = new LinkedHashSet<>();
         for (Article article : articles) {
+            Long previousClusterId = article.getClusterId();
+            Long previousViewpointGroupId = article.getViewpointGroupId();
+            if (previousClusterId != null && !previousClusterId.equals(clusterId)) {
+                previousClusterIds.add(previousClusterId);
+            }
+            if (previousViewpointGroupId != null) {
+                previousViewpointGroupIds.add(previousViewpointGroupId);
+            }
+
             ArticleAssignment assignment = assignmentByLink.get(article.getLink());
             article.applyClusterAssignment(clusterId, groupIdsByLabel.get(assignment.viewpointGroupLabel()));
         }
+        return new ReassignmentResult(previousClusterIds, previousViewpointGroupIds);
     }
 }
