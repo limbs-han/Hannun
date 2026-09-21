@@ -36,6 +36,47 @@ Pushgateway 가 용도에 맞고, 그쪽이면 A 가 보내는(push) 쪽이 된�
 | `pipeline_gold_articles` | gold_issue_feed | 발행 대상 기사 수 |
 | `pipeline_gold_ds2_matched_rows` | gold_issue_feed | 관점 값이 붙은 기사 수 |
 | `pipeline_gold_window` | gold_issue_feed | 마지막으로 읽은 DS 창. `window` 라벨에 날짜 |
+| `pipeline_gold_viewpoint_other_ratio` | gold_issue_feed | 관점 라벨이 "기타"거나 빈 기사 비율 |
+| `pipeline_gold_stance_neutral_ratio` | gold_issue_feed | 관점이 붙은 기사 중 성향이 중립인 비율 |
+| `pipeline_gold_briefing_fallback_ratio` | gold_issue_feed | DS2 요약이 없어 본문 앞부분으로 채운 비율 |
+| `pipeline_gold_issue_size_max` | gold_issue_feed | 가장 큰 이슈의 기사 수 |
+| `pipeline_publish_issues` | publish_clustering | BE 로 보낸 이슈 수 |
+| `pipeline_publish_carried_ids` | publish_clustering | 어제 번호를 이어받은 이슈 수 |
+
+### 양만 재면 깨져도 초록불이다 (S15P21E105-130)
+
+위 지표 중 앞의 여섯은 "몇 건 처리했나"다. 이것만으로는 파이프라인이 쓸모없는 값을
+성공적으로 만들어내도 아무 데도 안 걸린다. 실제로 두 번 놓쳤다.
+
+- 관점 라벨의 61~68% 가 "기타 관점"으로 깨진 것을 3주 뒤에 발견
+- 같은 이슈가 하루 57건씩 중복 발행된 것을 2주 뒤에 발견 (S15P21E105-129)
+
+둘 다 Airflow 는 내내 초록불이었고, 발견은 사람이 화면을 보고 했다. 그래서 질을 재는
+지표를 더했다.
+
+건수가 아니라 비율로 보낸다 — 기사 수가 날마다 달라 건수로는 어제와 못 겹친다.
+분모가 0 인 날은 그 비율을 아예 안 보낸다. 0 을 보내면 "전부 정상"으로 읽혀 아무것도
+안 만든 날이 가장 좋은 날처럼 그려진다.
+
+`pipeline_gold_stance_neutral_ratio` 의 분모는 관점이 실제로 붙은 기사다. 안 붙은
+기사는 중립이 아니라 결측이라, 분모에 넣으면 중립 쏠림이 낮게 보인다.
+
+`pipeline_gold_briefing_fallback_ratio` 는 "브리핑이 비었나"가 아니라 "DS2 가 줬나"를
+잰다. 합친 표에는 빈 브리핑이 없다 — 폴백이 이미 채운다. 비었나로 재면 값이 늘 0 이라
+지표가 거짓 안심을 준다.
+
+`pipeline_publish_carried_ids` 는 129번 이어붙이기가 도는지 보는 감시 지표다. 0 이
+계속 나오면 이어붙이기가 죽은 것이고, 그것 말고는 알아챌 길이 없다.
+
+**경보는 아직 안 붙였다.** 평소 값을 모르면 선을 어디 그을지도 못 정한다. 일주일
+그려놓고 DS2 와 기준을 정한다. 참고로 붙일 때 본 값은 이렇다(2026-09-20 창).
+
+| 지표 | 값 |
+|---|---|
+| viewpoint_other_ratio | 0.71 |
+| stance_neutral_ratio | 0.84 |
+| briefing_fallback_ratio | 0.28 |
+| issue_size_max | 43 |
 
 ### 뒤처진 날짜는 0 이 정상이 아니다
 

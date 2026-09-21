@@ -84,3 +84,52 @@ def test_fallback_briefing_cuts_at_sentence_end():
     import re
     head = "첫 문장이다. 둘째 문장이다. 셋째 문장은 잘린 채 제67"
     assert re.match(r"^(.*[.!?])", head).group(1) == "첫 문장이다. 둘째 문장이다."
+
+
+# --- 품질 지표 (S15P21E105-130) -------------------------------------------
+
+def _counts(**over):
+    base = {"rows": 100, "other_labels": 68, "matched": 100, "neutral": 82,
+            "briefing_fallbacks": 41, "issue_size_max": 89}
+    base.update(over)
+    return base
+
+
+def _values(lines):
+    return {name.split("{")[0]: float(value)
+            for name, value in (line.split(" ", 1) for line in lines)}
+
+
+def test_quality_lines_report_ratios_not_raw_counts():
+    # 건수는 날마다 달라 비교가 안 된다. 비율이라야 어제와 오늘을 겹쳐 볼 수 있다
+    values = _values(g.quality_lines(_counts()))
+    assert values["pipeline_gold_viewpoint_other_ratio"] == 0.68
+    assert values["pipeline_gold_stance_neutral_ratio"] == 0.82
+    assert values["pipeline_gold_briefing_fallback_ratio"] == 0.41
+
+
+def test_neutral_ratio_counts_only_rows_ds2_actually_labelled():
+    # 관점이 안 붙은 기사는 중립이 아니라 결측이다. 분모에 넣으면 중립 비율이 낮게 보인다
+    values = _values(g.quality_lines(_counts(rows=100, matched=50, neutral=40)))
+    assert values["pipeline_gold_stance_neutral_ratio"] == 0.8
+
+
+def test_biggest_issue_size_goes_out_as_is():
+    # 과하게 뭉치는지 보는 값이라 비율로 바꾸면 뜻이 사라진다
+    assert _values(g.quality_lines(_counts()))["pipeline_gold_issue_size_max"] == 89
+
+
+def test_empty_day_sends_no_ratios():
+    # 분모가 0 일 때 0 을 보내면 "전부 정상"으로 읽힌다. 빈 날은 값을 안 보내야
+    # 그래프가 끊겨 보이고, 끊긴 것이 눈에 띈다
+    values = _values(g.quality_lines(_counts(rows=0, matched=0)))
+    assert "pipeline_gold_viewpoint_other_ratio" not in values
+    assert "pipeline_gold_stance_neutral_ratio" not in values
+    assert "pipeline_gold_issue_size_max" in values
+
+
+def test_observed_broken_labels_start_with_the_prefix_we_look_for():
+    # 실측(9/19~21) 상위 두 라벨. 이 둘이 전체의 68.5% 였다
+    for label in ("기타 관점", "기타 중립 관점"):
+        assert label.startswith(g.OTHER_LABEL_PREFIX)
+    assert not "경쟁력 강화".startswith(g.OTHER_LABEL_PREFIX)

@@ -92,6 +92,8 @@ _BYLINE = r"^\s*[가-힣]{2,5}\s*(?:기자|특파원|앵커)\s*=\s*"
 _LEAD_EQUALS = r"^\s*=\s*"
 
 BRIEFING_CHARS = 200
+# 지표 계산에만 쓰는 임시 열 (S15P21E105-130). gold 스키마에 들어가면 안 된다
+BRIEFING_SOURCE = "_briefing_from_ds2"
 
 
 def _fallback_briefing(col):
@@ -174,6 +176,9 @@ def merge_ds2(feed, ds2):
             .withColumn("fact_summary", F.coalesce("ds2_fact_summary", "fact_summary"))
             .withColumn("common_facts_briefing", F.coalesce("ds2_briefing", "common_facts_briefing"))
             .withColumn("category", F.coalesce("ds2_category", "category"))
+            # DS2 요약이 왔는지 지표에만 쓰고 쓰기 직전에 뗀다. gold 에는 남기지 않는다.
+            # 합친 뒤에는 폴백으로 채워져 빈 브리핑이 하나도 없어, 여기서 안 보면 볼 곳이 없다
+            .withColumn(BRIEFING_SOURCE, F.col("ds2_briefing").isNotNull())
             .drop("ds2_label", "ds2_stance", "ds2_fact_summary", "ds2_briefing", "ds2_category"))
 
 
@@ -264,7 +269,56 @@ def build_with_ds2(spark, day, window):
     return merge_ds2(build(spark, day, window), read_ds2(spark, window))
 
 
+# 관점 라벨이 이 말로 시작하면 DS2 가 관점을 못 뽑고 흘려보낸 것이다.
+# 실측(9/19~21): "기타 관점"·"기타 중립 관점" 이 전체의 68.5%
+OTHER_LABEL_PREFIX = "기타"
+
+
+def quality_counts(df):
+    """품질 지표에 쓸 값을 한 번에 센다 (S15P21E105-130).
+
+    15분마다 도는 잡이라 지표 하나에 훑기 한 번씩 붙이지 않는다.
+    """
+    label = F.col("viewpoint_group_label")
+    other = (label.isNull() | (F.trim(label) == "")
+             | label.startswith(OTHER_LABEL_PREFIX))
+    # 합친 표에는 빈 브리핑이 없다 — 폴백이 이미 채운다. 그래서 "비었나" 대신
+    # "DS2 가 줬나"를 센다. 폴백 비율이 높으면 DS2 요약이 안 오고 있다는 뜻이다
+    fallback = ~F.col(BRIEFING_SOURCE)
+    row = df.agg(
+        F.count("*").alias("rows"),
+        F.sum(other.cast("int")).alias("other_labels"),
+        F.sum(F.col("stance").isNotNull().cast("int")).alias("matched"),
+        F.sum((F.col("stance") == "neutral").cast("int")).alias("neutral"),
+        F.sum(fallback.cast("int")).alias("briefing_fallbacks"),
+        F.max("issue_size").alias("issue_size_max"),
+    ).first().asDict()
+    return {key: (value or 0) for key, value in row.items()}
+
+
+def quality_lines(counts):
+    """센 값을 지표 줄로 바꾼다.
+
+    건수가 아니라 비율로 보낸다 — 기사 수가 날마다 달라 건수로는 어제와 못 겹친다.
+    중립 비율의 분모는 관점이 실제로 붙은 기사다. 안 붙은 기사는 중립이 아니라
+    결측이라 분모에 넣으면 중립 쏠림이 낮게 보인다.
+
+    분모가 0 이면 그 비율은 보내지 않는다. 0 을 보내면 "전부 정상"으로 읽혀,
+    아무것도 안 만든 날이 가장 좋은 날처럼 그려진다.
+    """
+    lines = [metrics.line("gold_issue_size_max", counts["issue_size_max"])]
+    for name, top, bottom in (
+            ("gold_viewpoint_other_ratio", "other_labels", "rows"),
+            ("gold_stance_neutral_ratio", "neutral", "matched"),
+            ("gold_briefing_fallback_ratio", "briefing_fallbacks", "rows")):
+        if counts[bottom]:
+            lines.append(metrics.line(name, round(counts[top] / counts[bottom], 4)))
+    return lines
+
+
 def write(df, day, window=None):
+    counts = quality_counts(df)
+    df = df.drop(BRIEFING_SOURCE)
     (df.repartition(1)  # 하루 분량이 1MB 남짓이라 파일 하나로 충분하다
        .write.mode("overwrite")
        .option("partitionOverwriteMode", "dynamic")
@@ -273,12 +327,13 @@ def write(df, day, window=None):
     logger.info("gold 이슈 피드 %s: 이슈 %s개, 기사 %s건", day, f"{issues:,}", f"{rows:,}")
     # 관점 값이 붙은 기사 수. rows 로 나누면 DS2 연결 비율이 된다. 창이 어긋나면
     # 이 값이 0 에 가까워진다 (S15P21E105-79)
+    # 양을 재는 지표만으로는 라벨이 깨져도 전부 초록불이다 (S15P21E105-130)
     metrics.push("gold_issue_feed", lambda: [
         metrics.line("gold_issues", issues),
         metrics.line("gold_articles", rows),
         metrics.line("gold_ds2_matched_rows", df.where(F.col("stance").isNotNull()).count()),
         metrics.line("gold_window", 1, {"window": window or ""}),
-    ])
+    ] + quality_lines(counts))
 
 
 if __name__ == "__main__":

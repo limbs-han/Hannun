@@ -23,6 +23,8 @@ import logging
 import os
 import time
 
+import metrics
+
 logger = logging.getLogger("publish_clustering")
 
 TOPIC = os.environ.get("CLUSTERING_TOPIC", "news.clustering.completed")
@@ -317,6 +319,11 @@ if __name__ == "__main__":
             print(json.dumps(message, ensure_ascii=False, indent=2)[:800])
     else:
         logger.info("발행 완료 %s건", f"{publish(messages):,}")
+        # 이어붙이기가 죽으면 0 이 계속 찍힌다. 그것 말고는 알아챌 길이 없다 (S15P21E105-130)
+        metrics.push("publish_clustering", [
+            metrics.line("publish_issues", len(messages)),
+            metrics.line("publish_carried_ids", carried),
+        ])
         # 보낸 뒤에만 기억한다. 못 보낸 번호를 기억하면 다음 실행이 헛것을 이어받는다
         issue_map[args.day] = {row["article_id"]: resolved[cluster_id]
                                for cluster_id, group in grouped.items() for row in group}
