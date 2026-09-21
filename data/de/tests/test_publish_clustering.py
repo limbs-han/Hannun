@@ -109,3 +109,95 @@ def test_missing_required_lists_empty_be_fields():
 def test_missing_required_empty_when_ds2_filled_everything():
     rows = [_row(7, "https://a/1", 0, label="A-1 경제적 기대 효과", stance="positive")]
     assert pc.missing_required(pc.build_message(rows)) == []
+
+
+# --- 이슈 번호 이어붙이기 (S15P21E105-129) ---------------------------------
+
+def _cluster(cluster_id, article_ids):
+    """stable_ids 가 보는 최소 모양 — 이슈 하나와 그 기사들."""
+    return [{"cluster_id": cluster_id, "article_id": a} for a in article_ids]
+
+
+def test_issue_id_carries_over_when_most_articles_came_from_one_previous_issue():
+    # 실제 사고 재현: 09-18 에 29388 로 나간 기사 3건이 09-19 에 31214 로 다시 묶였다.
+    # 어제 번호를 그대로 써야 BE 가 같은 이슈로 갱신한다
+    history = {"a": 29388, "b": 29388, "c": 29388, "d": 29388}
+    grouped = {31214: _cluster(31214, ["a", "b", "c"])}
+    assert pc.stable_ids(grouped, history) == {31214: 29388}
+
+
+def test_issue_id_stays_put_when_run_again_on_its_own_result():
+    # 발행은 하루 세 번 돈다. 두 번째 실행이 첫 번째 결과를 보고 번호를 바꾸면 안 된다
+    history = {"a": 29388, "b": 29388, "c": 29388}
+    grouped = {31214: _cluster(31214, ["a", "b", "c"])}
+    first = pc.stable_ids(grouped, history)
+    after = dict(history)
+    after.update({a: first[31214] for a in ["a", "b", "c"]})
+    assert pc.stable_ids(grouped, after) == first
+
+
+def test_one_previous_id_goes_to_the_cluster_that_shares_more_articles():
+    # 이슈가 둘로 쪼개지면 번호는 하나뿐이다. 많이 겹치는 쪽이 가져가고 나머지는 제 번호를 쓴다
+    history = {"a": 100, "b": 100, "c": 100, "d": 100, "e": 100}
+    grouped = {7: _cluster(7, ["a", "b", "c"]), 8: _cluster(8, ["d", "e"])}
+    assert pc.stable_ids(grouped, history) == {7: 100, 8: 8}
+
+
+def test_without_history_every_cluster_keeps_its_own_id():
+    # 기억 파일이 없거나 비어 있으면 지금과 똑같이 동작해야 한다
+    grouped = {7: _cluster(7, ["a"]), 8: _cluster(8, ["b"])}
+    assert pc.stable_ids(grouped, {}) == {7: 7, 8: 8}
+
+
+def test_a_single_shared_article_is_not_enough_to_take_the_id():
+    # 기사 한 건 겹쳤다고 이어붙이면 남의 이슈를 집어삼킨다. DS 승계와 같은 문턱을 쓴다
+    history = {"a": 100}
+    grouped = {7: _cluster(7, ["a", "x", "y", "z"])}
+    assert pc.stable_ids(grouped, history) == {7: 7}
+
+
+def test_minority_vote_does_not_take_the_id():
+    # 겹친 기사가 여러 이슈에서 왔고 최다가 과반이 아니면 새 이슈로 본다
+    history = {"a": 100, "b": 100, "c": 200, "d": 300, "e": 400}
+    grouped = {7: _cluster(7, ["a", "b", "c", "d", "e"])}
+    assert pc.stable_ids(grouped, history) == {7: 7}
+
+
+def test_does_not_steal_an_id_another_cluster_is_already_using_today():
+    # 오늘 29388 군집이 따로 살아 있는데 다른 군집이 그 번호를 가져가면 키가 겹쳐
+    # BE 에서 두 이슈가 서로를 덮어쓴다
+    history = {"a": 29388, "b": 29388}
+    grouped = {31214: _cluster(31214, ["a", "b"]), 29388: _cluster(29388, ["z"])}
+    assert pc.stable_ids(grouped, history) == {31214: 31214, 29388: 29388}
+
+
+def test_resolved_ids_never_repeat():
+    # 어떤 경우에도 한 번 발행에 같은 키가 둘 나오면 안 된다
+    history = {"a": 100, "b": 100, "c": 100, "d": 100}
+    grouped = {7: _cluster(7, ["a", "b"]), 8: _cluster(8, ["c", "d"]), 100: _cluster(100, ["z"])}
+    resolved = pc.stable_ids(grouped, history)
+    assert len(set(resolved.values())) == len(resolved)
+
+
+def test_recent_ids_reads_back_a_few_days_and_lets_today_win():
+    # 오늘 이미 정한 번호가 어제 것보다 우선한다 — 하루 안에서 번호가 흔들리지 않게
+    issue_map = {"2026-09-17": {"a": 1}, "2026-09-18": {"a": 2}, "2026-09-19": {"a": 3}}
+    assert pc.recent_ids(issue_map, "2026-09-19", lookback=3)["a"] == 3
+
+
+def test_recent_ids_ignores_days_beyond_the_lookback():
+    issue_map = {"2026-09-10": {"old": 1}, "2026-09-19": {"new": 2}}
+    history = pc.recent_ids(issue_map, "2026-09-20", lookback=3)
+    assert "old" not in history and history["new"] == 2
+
+
+def test_issue_map_round_trips_and_drops_old_days(tmp_path):
+    path = tmp_path / "publish_issue_map.json"
+    pc.save_issue_map(str(path), {"2026-09-01": {"a": 1}, "2026-09-20": {"b": 2}},
+                      day="2026-09-20", lookback=3)
+    assert pc.load_issue_map(str(path)) == {"2026-09-20": {"b": 2}}
+
+
+def test_missing_issue_map_reads_as_empty(tmp_path):
+    # 파일이 없어도 발행은 계속돼야 한다
+    assert pc.load_issue_map(str(tmp_path / "nope.json")) == {}
