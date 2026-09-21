@@ -13,8 +13,11 @@ import java.util.List;
 @Repository
 public interface IssueRepository extends JpaRepository<Issue, Long> {
 
+    // score = articleCount / (경과시간(h) + 2)^gravity. gravity를 1.5 -> 0.8로 낮춰서 시간 감쇠보다
+    // 기사 수 비중을 더 크게 둠(2026-09-21 요청). 예: 60건/46시간 전 이슈가 6건/11시간 전 이슈보다
+    // 실제로 더 화제성 있게 보이도록(예전엔 둘 다 시간 감쇠에 묻혀 round 후 0~1로 사실상 동률이었음).
     @Modifying
-    @Query(value = "update issue set score = round(article_count / power(timestampdiff(hour, first_reported_at, :now) + 2, 1.5)) " +
+    @Query(value = "update issue set score = round(article_count / power(timestampdiff(hour, first_reported_at, :now) + 2, 0.8)) " +
             "where last_reported_at > :activeSince", nativeQuery = true)
     int recalculateScores(@Param("now") OffsetDateTime now, @Param("activeSince") OffsetDateTime activeSince);
 
