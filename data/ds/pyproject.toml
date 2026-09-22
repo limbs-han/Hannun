@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hannun"
+version = "0.1.0"
+description = "Hannun DS1 pipeline: news dedup, embedding, clustering"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "pyarrow>=15",
+    "pydantic>=2.6",
+    "datasketch>=1.6",
+    "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "flake8>=7"]
+# 선택 그룹으로 두는 이유: torch 가 무거워서(수백 MB) 임베딩을 돌리지 않는
+# 환경(DS2 등)에까지 강제하지 않는다. 실행 환경에서만 pip install -e ".[embedding]"
+embedding = ["sentence-transformers>=3"]
+# umap-learn(numba)도 같은 이유로 선택 그룹. HDBSCAN 은 scikit-learn 내장이라 기본 포함
+clustering = ["umap-learn>=0.5"]
+
+[project.scripts]
+hannun-ingest = "hannun.ingest.cli:main"
+hannun-preprocess = "hannun.preprocess.cli:main"
+hannun-dedup = "hannun.dedup.cli:main"
+hannun-embed = "hannun.embedding.cli:main"
+hannun-cluster = "hannun.clustering.cli:main"
+hannun-quality = "hannun.quality.cli:main"
+hannun-assign = "hannun.quality.assign_cli:main"
+hannun-succeed = "hannun.clustering.succession_cli:main"
+hannun-feed = "hannun.feed.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

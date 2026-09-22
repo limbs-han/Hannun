@@ -1,0 +1,30 @@
+# 파이썬
+.venv/
+.venv312/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# 코드가 만드는 데이터. samples/ 만 커밋한다
+gold/
+*.parquet
+*.parquet.tmp
+
+# 라벨링 자료 중 기사 원문. 라벨과 색인(csv)만 커밋한다
+docs/**/*.jsonl
+
+# 실데이터 표본·프로파일. 기사 원문이 들어가므로 커밋하지 않는다
+local/
+
+# 모델 가중치, 임베딩 캐시
+models/
+*.npy
+
+# 로컬 환경
+.env
+*.log
+.vscode/
+.idea/

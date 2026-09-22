@@ -1,0 +1,154 @@
+# EC2 A(J15E105A) 단일 노드 HDFS 스택.
+# 단일 머신에서는 DataNode 를 늘려도 같은 디스크라 장애 도메인이 하나다.
+# 하둡 공식 싱글노드 가이드 표준(dfs.replication=1)을 따르고,
+# 유실 대비는 새벽 백업(B 서버 rsync)이 담당한다.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  namenode:
+    image: apache/hadoop:3.4.1
+    hostname: namenode
+    # ponytail: 개발용이라 root 실행 — 도커 볼륨이 root 소유로 생성돼 hadoop 유저가 못 쓰는 문제 회피
+    user: root
+    command: ["hdfs", "namenode"]
+    env_file: hadoop.env
+    environment:
+      # 이미지의 자동 포맷은 "이 경로가 없을 때"만 동작하는데 볼륨 마운트가 상위 폴더를 미리 만들어버림.
+      # 포맷 후에만 생기는 current/ 하위 폴더를 기준으로 검사해 첫 기동 시 포맷이 실행되게 함
+      ENSURE_NAMENODE_DIR: /hadoop/dfs/name/current
+      HADOOP_HEAPSIZE_MAX: "1024"
+    # ponytail: EC2 스펙 확인 전 보수치 — free -h 확인 후 메모리 예산표에 맞춰 조정
+    mem_limit: 1536m
+    ports:
+      # 웹 UI. 호스트 9870이 Windows 예약 포트 범위에 걸리는 경우가 있어 기본 9770 사용.
+      # HDFS UI 는 무인증이라 서버 내부 전용으로 묶고 SSH 터널로 본다 (README 웹 UI 절)
+      - "127.0.0.1:${HDFS_UI_PORT:-9770}:9870"
+    volumes:
+      - namenode:/hadoop/dfs/name
+    restart: unless-stopped
+    logging: *logging
+
+  datanode:
+    image: apache/hadoop:3.4.1
+    hostname: datanode
+    user: root
+    command: ["hdfs", "datanode"]
+    env_file: hadoop.env
+    environment:
+      HADOOP_HEAPSIZE_MAX: "512"
+    mem_limit: 1024m
+    volumes:
+      - datanode:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    restart: unless-stopped
+    logging: *logging
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    mem_limit: 512m
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    logging: *logging
+
+  airflow:
+    build:
+      # 크롤러 requirements.txt 를 이미지에 넣기 위해 컨텍스트는 data/de
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
+    # standalone = 스케줄러+웹서버 단일 컨테이너. admin 비밀번호는
+    # `docker compose exec airflow cat standalone_admin_password.txt`
+    command: standalone
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # 새벽 정비 DAG(S15P21E105-74)의 03:00 을 KST 로 해석하게 한다. 기본값 UTC 로 두면
+      # 예약이 정오에 잡힌다
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+      AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: Asia/Seoul
+      # NameNode 가 root 로 돌아 / 가 root 소유 — 무인증(simple auth) HDFS 라
+      # 클라이언트가 선언한 유저를 그대로 믿으므로 root 로 선언해 쓰기 권한 확보
+      HADOOP_USER_NAME: root
+      # 적재 잡(kafka_to_bronze)이 읽음 — .env 에서 주입, 로컬 미설정이면 빈 값
+      KAFKA_BROKER: ${KAFKA_BROKER:-}
+      # silver 저장 형식 전환 스위치 (S15P21E105-126). 되돌리기가 .env 한 줄이 되도록
+      # 잡 코드가 아니라 여기로 뺀다. 미설정이면 파케이라 지금 동작과 같다
+      SILVER_WRITE: ${SILVER_WRITE:-parquet}
+      SILVER_READ: ${SILVER_READ:-parquet}
+      # BE 토픽 발행 스위치. dry-run 이 기본이라 머지만으로는 운영에 보내지 않는다.
+      # 건수를 확인받은 뒤 .env 에 send 를 넣는다 (S15P21E105-69)
+      PUBLISH_MODE: ${PUBLISH_MODE:-dry-run}
+      # Spark 클라이언트 기본 설정 폴더. 복제 수를 1 로 못 박는다 (S15P21E105-105)
+      SPARK_CONF_DIR: /opt/spark-conf
+      # 파이프라인 지표를 보낼 B 서버 Pushgateway (S15P21E105-79). 미설정이면 잡이
+      # 지표를 건너뛰고 그대로 돈다. Pushgateway 는 인증이 없어 B 에서 127.0.0.1 로만
+      # 열고 백업과 같은 키로 ssh 해서 B 안에서 보낸다 — 주소가 localhost 인 이유
+      PUSHGATEWAY: ${PUSHGATEWAY:-}
+      PUSHGATEWAY_SSH: ${PUSHGATEWAY_SSH:-}
+    # Spark driver 가 이 컨테이너 안에서 돈다. silver 전체 재구축(CSV 23GB) 기준으로
+    # 6g, 서버 RAM 15Gi 중 HDFS·postgres 몫을 남긴 값
+    mem_limit: 6g
+    # DS 일일 체인(ds_export DAG 의 hannun_daily_chain)이 호스트로 ssh 해
+    # hannun-ds 컨테이너를 돌린다 (S15P21E105-101)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # HDFS UI 와 같은 이유로 서버 내부 전용. 화면에서 DAG 를 돌릴 수 있어 사실상 실행 권한이고,
+      # DS 실행 환경이 도커를 부르게 되면 그 권한이 서버 관리자 권한까지 닿는다. 접속은 SSH 터널로
+      - "127.0.0.1:${AIRFLOW_UI_PORT:-8080}:8080"
+    volumes:
+      - ../dags:/opt/airflow/dags
+      # Spark 가 HDFS 에 쓸 때 복제 1 을 요청하게 한다. 잡 코드를 고치지 않고 여섯 잡에
+      # 한꺼번에 적용하려고 설정 파일로 뒀다 (S15P21E105-105)
+      - ./spark:/opt/spark-conf:ro
+      # DS 소유 DAG(ds_chain). DS 가 자기 폴더에서 고치고 DE 는 부르기만 한다.
+      # Airflow 는 dags 아래를 재귀로 읽어 하위 폴더도 찾는다 (S15P21E105-69)
+      - ../../ds/dags:/opt/airflow/dags/ds
+      - ../jobs:/opt/airflow/jobs
+      - ../crawler:/opt/airflow/crawler
+      # silver 잡이 데이터셋 정제 규칙(backfill.dataset_sender)을 재사용한다
+      - ../backfill:/opt/airflow/backfill
+      # 수집기의 "이미 본 기사" sqlite — 컨테이너 재생성 시에도 보존해야 재발행이 없다
+      - crawler-state:/opt/airflow/state
+      # spark-submit --packages 가 내려받는 jar 캐시. 컨테이너에만 두면 재생성마다 다시
+      # 받는다. silver 재구축은 3시간 넘게 도는데 그 사이 다시 받게 되면 처음부터다
+      - ivy-cache:/home/airflow/.ivy2
+      # DS 분석 산출물. gold 이슈 피드 잡이 읽는다(S15P21E105-69). DS 코드가 HDFS 를
+      # 쓰지 못해 로컬에 두고 읽기 전용으로 붙인다
+      - ~/gold:/opt/airflow/ds_gold:ro
+      # DS2 분석 결과(관점 라벨·성향·요약). gold 잡이 붙인다(S15P21E105-69)
+      - ~/ds_output:/opt/airflow/ds_output:ro
+      # DS 입력 내려주는 폴더. DS 파이프라인이 로컬 파일만 읽어서 호스트와 공유한다.
+      # 호스트 폴더 소유자가 uid 50000 이어야 컨테이너가 쓸 수 있다 (infra/README 참고)
+      - ~/ds_input:/opt/airflow/ds_input
+      # B 서버 백업 전송용 키(S15P21E105-74). 읽기 전용이고 커밋하지 않는다. 컨테이너가
+      # uid 50000 으로 돌아 호스트 파일 소유자도 50000 이어야 ssh 가 읽는다. 사람이 쓰는
+      # 키(~/.ssh/b.pem)와 소유자가 달라야 해서 이름을 나눈다 (infra/README 참고)
+      - ~/.ssh/b-airflow.pem:/opt/airflow/.ssh/b.pem:ro
+      # DS 체인 실행용 호스트 ssh 키 — b-airflow.pem 과 같은 규칙(uid 50000 소유,
+      # 커밋 금지). 만들기는 ds/docs/ds1/EC2_RUNBOOK.md §7
+      - ~/.ssh/hannun-airflow.pem:/opt/airflow/.ssh/hannun.pem:ro
+      - airflow-logs:/opt/airflow/logs
+    depends_on:
+      - postgres
+      - namenode
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  namenode:
+  datanode:
+  postgres:
+  airflow-logs:
+  crawler-state:
+  ivy-cache:
