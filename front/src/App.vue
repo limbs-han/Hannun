@@ -22,6 +22,7 @@ type ViewArticle = { id?: number; source: string; headline: string; byline: stri
 type PageName = 'home' | 'detail' | 'search'
 type NavigationState = { __hannun: true; page: PageName; issueId?: number; keyword?: string }
 type ViewpointCard = { number: string; groupId?: number; title: string; description: string; press: number; articleCount: number; remainingCount: number; articles: ViewArticle[] }
+type CalendarDay = { key: string; date: string; label: number | null; selected: boolean; inRange: boolean; isStart: boolean; isEnd: boolean }
 
 // BE 가 내려주는 category 값과 글자 단위로 일치해야 합니다 — 그대로 쿼리 파라미터로 나갑니다.
 // '산업'은 '경제'로 통합하기로 해서 탭에 두지 않습니다(실제 통합은 수집·적재 단계에서 처리).
@@ -54,6 +55,13 @@ const feedLoading = ref(false)
 const feedHasNext = ref(false)
 const feedCursorValue = ref<number | string | null>(null)
 const feedCursorId = ref<number | null>(null)
+const dateFromInput = ref('')
+const dateToInput = ref('')
+const appliedDateFrom = ref('')
+const appliedDateTo = ref('')
+const dateRangeError = ref('')
+const datePickerOpen = ref(false)
+const calendarViewDate = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
 const results = ref<Issue[]>([])
 const searchLoading = ref(false)
 const searchTopIssues = ref<Issue[]>([])
@@ -71,6 +79,7 @@ let searchObserver: IntersectionObserver | null = null
 let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null
 let relatedSearchRequestId = 0
 let detailRequestId = 0
+let feedRequestId = 0
 
 // 화제성 상위 2건은 맨 위 블럭으로 빼고, 목록에서는 중복 제거합니다.
 // 3건 미만이면 블럭을 띄우지 않습니다 — 아래 목록이 비어버리기 때문입니다.
@@ -82,6 +91,28 @@ const featuredIssues = computed(() =>
 const feed = computed(() => {
   const top = new Set(featuredIssues.value.map((issue) => issue.id))
   return issues.value.filter((issue) => !top.has(issue.id))
+})
+const dateRangeActive = computed(() => sort.value === '최신순' && Boolean(appliedDateFrom.value && appliedDateTo.value))
+const dateRangeLabel = computed(() => {
+  if (dateFromInput.value && dateToInput.value) return `${dateFromInput.value} – ${dateToInput.value}`
+  if (dateFromInput.value) return `${dateFromInput.value} – 종료일 선택`
+  return '기간 선택'
+})
+const calendarTitle = computed(() => `${calendarViewDate.value.getFullYear()}년 ${calendarViewDate.value.getMonth() + 1}월`)
+const calendarDays = computed<CalendarDay[]>(() => {
+  const year = calendarViewDate.value.getFullYear()
+  const month = calendarViewDate.value.getMonth()
+  const firstWeekday = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7
+  return Array.from({ length: cellCount }, (_, index) => {
+    const day = index - firstWeekday + 1
+    if (day < 1 || day > daysInMonth) return { key: `blank-${index}`, date: '', label: null, selected: false, inRange: false, isStart: false, isEnd: false }
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const isStart = date === dateFromInput.value
+    const isEnd = date === dateToInput.value
+    return { key: date, date, label: day, selected: isStart || isEnd, inRange: Boolean(dateToInput.value && date > dateFromInput.value && date < dateToInput.value), isStart, isEnd }
+  })
 })
 const hasNextViewpointPage = computed(() => {
   const info = detailData.value?.viewpointGroupPage
@@ -121,23 +152,28 @@ function sendLog(eventType: LogEventType, payload: Record<string, unknown>) {
 
 /* ---------- 1·6. 피드 ---------- */
 async function loadFeed(reset = false) {
-  if (feedLoading.value || (!reset && !feedHasNext.value)) return
+  if (!reset && (feedLoading.value || !feedHasNext.value)) return
+  const requestId = ++feedRequestId
   feedLoading.value = true
   if (reset) { feedCursorValue.value = null; feedCursorId.value = null }
   try {
     const apiSort: FeedSort = sort.value === '최신순' ? 'latest' : 'trending'
     const params = { category: category.value === '전체' ? 'ALL' : category.value, sort: apiSort, cursorValue: reset ? null : feedCursorValue.value, cursorId: reset ? null : feedCursorId.value }
-    const response = await api.getIssues(params)
+    const response = dateRangeActive.value
+      ? await api.getIssuesByDateRange({ ...params, from: appliedDateFrom.value, to: appliedDateTo.value })
+      : await api.getIssues(params)
+    if (requestId !== feedRequestId) return
     const mapped = response.items.map(mapIssue)
     issues.value = reset ? mapped : [...issues.value, ...mapped.filter((item) => !issues.value.some((existing) => existing.id === item.id))]
     feedCursorValue.value = response.nextCursorValue
     feedCursorId.value = response.nextCursorId
     feedHasNext.value = response.hasNext
   } catch {
+    if (requestId !== feedRequestId) return
     if (reset) issues.value = []
     feedHasNext.value = false
   } finally {
-    feedLoading.value = false
+    if (requestId === feedRequestId) feedLoading.value = false
   }
 }
 
@@ -149,7 +185,58 @@ function loadMoreFeed() {
 }
 
 async function selectCategory(value: string) { category.value = value; home(); await loadFeed(true) }
-async function selectSort(value: string) { sort.value = value; await loadFeed(true) }
+async function selectSort(value: string) {
+  if (sort.value === value) return
+  sort.value = value
+  datePickerOpen.value = false
+  await loadFeed(true)
+}
+
+/* ---------- 6. 최신순 기간 선택 캘린더 ---------- */
+async function applyDateRange() {
+  if (!dateFromInput.value || !dateToInput.value) { dateRangeError.value = '시작일과 종료일을 모두 선택해주세요.'; return }
+  if (dateFromInput.value > dateToInput.value) { dateRangeError.value = '시작일은 종료일보다 늦을 수 없습니다.'; return }
+  dateRangeError.value = ''
+  appliedDateFrom.value = dateFromInput.value
+  appliedDateTo.value = dateToInput.value
+  datePickerOpen.value = false
+  await loadFeed(true)
+}
+
+async function clearDateRange() {
+  dateFromInput.value = ''
+  dateToInput.value = ''
+  appliedDateFrom.value = ''
+  appliedDateTo.value = ''
+  dateRangeError.value = ''
+  datePickerOpen.value = false
+  await loadFeed(true)
+}
+
+function toggleDatePicker() {
+  datePickerOpen.value = !datePickerOpen.value
+  if (datePickerOpen.value && dateFromInput.value) {
+    const [year, month] = dateFromInput.value.split('-').map(Number)
+    calendarViewDate.value = new Date(year, month - 1, 1)
+  }
+}
+
+function changeCalendarMonth(offset: number) {
+  calendarViewDate.value = new Date(calendarViewDate.value.getFullYear(), calendarViewDate.value.getMonth() + offset, 1)
+}
+
+function selectCalendarDate(value: string) {
+  dateRangeError.value = ''
+  if (!dateFromInput.value || dateToInput.value) { dateFromInput.value = value; dateToInput.value = ''; return }
+  if (value < dateFromInput.value) { dateToInput.value = dateFromInput.value; dateFromInput.value = value; return }
+  dateToInput.value = value
+}
+
+function resetCalendarSelection() {
+  dateFromInput.value = ''
+  dateToInput.value = ''
+  dateRangeError.value = ''
+}
 
 /* ---------- 2. 브리핑 · 관점 카드 ---------- */
 const briefingFacts = computed(() => detailData.value?.commonFactsBriefing ?? [])
@@ -246,7 +333,7 @@ function applyNavigation(state: NavigationState) {
 function navigate(state: NavigationState) { applyNavigation(state); window.history.pushState(state, '') }
 function home() { navigate({ __hannun: true, page: 'home' }) }
 
-// 로고 클릭 — 카테고리·정렬·검색어까지 처음 들어온 상태로 되돌립니다.
+// 로고 클릭 — 카테고리·정렬·기간·검색어까지 처음 들어온 상태로 되돌립니다.
 // home() 은 selectCategory() 도 쓰므로 따로 둡니다(거기서 초기화하면 카테고리 선택이 바로 풀립니다).
 async function resetToHome() {
   category.value = '전체'
@@ -254,6 +341,12 @@ async function resetToHome() {
   query.value = ''
   keyword.value = ''
   searchOpen.value = false
+  dateFromInput.value = ''
+  dateToInput.value = ''
+  appliedDateFrom.value = ''
+  appliedDateTo.value = ''
+  dateRangeError.value = ''
+  datePickerOpen.value = false
   home()
   await loadFeed(true)
 }
@@ -578,6 +671,7 @@ function handlePopState(event: PopStateEvent) {
 
 function handleDocumentClick(event: MouseEvent) {
   if (searchOpen.value && !searchBox.value?.contains(event.target as Node)) searchOpen.value = false
+  if (datePickerOpen.value && event.target instanceof Element && !event.target.closest('.date-range-filter')) datePickerOpen.value = false
 }
 
 watch(feedSentinel, (element, previous) => { if (previous) feedObserver?.unobserve(previous); if (element) feedObserver?.observe(element) })
@@ -686,6 +780,31 @@ onBeforeUnmount(() => {
               <button :class="{ active: sort === '화제성순' }" @click="selectSort('화제성순')">화제성순</button>
               <button :class="{ active: sort === '최신순' }" @click="selectSort('최신순')">최신순</button>
             </div>
+            <form v-if="sort === '최신순'" class="date-range-filter" @submit.prevent="applyDateRange">
+              <span>{{ dateRangeActive ? '기간 기준' : '실시간 기준' }}</span>
+              <button class="date-picker-trigger" type="button" :aria-expanded="datePickerOpen" @click="toggleDatePicker">{{ dateRangeLabel }} <b>▾</b></button>
+              <button v-if="dateRangeActive" class="date-range-reset" type="button" :disabled="feedLoading" @click="clearDateRange">초기화</button>
+              <div v-if="datePickerOpen" class="date-picker" @click.stop>
+                <div class="date-picker-head">
+                  <button type="button" aria-label="이전 달" @click="changeCalendarMonth(-1)">‹</button>
+                  <strong>{{ calendarTitle }}</strong>
+                  <button type="button" aria-label="다음 달" @click="changeCalendarMonth(1)">›</button>
+                </div>
+                <div class="date-picker-week"><span v-for="day in ['일', '월', '화', '수', '목', '금', '토']" :key="day">{{ day }}</span></div>
+                <div class="date-picker-days" :class="{ ranged: dateFromInput && dateToInput }">
+                  <template v-for="day in calendarDays" :key="day.key">
+                    <button v-if="day.label" type="button" :class="{ selected: day.selected, 'in-range': day.inRange, start: day.isStart, end: day.isEnd }" @click="selectCalendarDate(day.date)">{{ day.label }}</button>
+                    <span v-else></span>
+                  </template>
+                </div>
+                <p>{{ dateFromInput ? (dateToInput ? `${dateFromInput}부터 ${dateToInput}까지` : '종료일을 선택해주세요.') : '시작일을 선택해주세요.' }}</p>
+                <div class="date-picker-actions">
+                  <button type="button" @click="resetCalendarSelection">다시 선택</button>
+                  <button type="submit" :disabled="feedLoading || !dateFromInput || !dateToInput">적용</button>
+                </div>
+              </div>
+              <small v-if="dateRangeError" role="alert">{{ dateRangeError }}</small>
+            </form>
           </div>
 
           <article v-for="issue in feed" :key="issue.id">
@@ -707,7 +826,8 @@ onBeforeUnmount(() => {
           <div v-if="feedLoading && !feed.length" class="loading">뉴스를 불러오는 중입니다…</div>
           <div v-else-if="!feed.length" class="empty">
             <b>표시할 이슈가 없습니다.</b>
-            <p v-if="category !== '전체'">‘{{ category }}’ 카테고리에 표시할 이슈가 없습니다. 다른 카테고리를 선택해보세요.</p>
+            <p v-if="dateRangeActive">{{ appliedDateFrom }} ~ {{ appliedDateTo }} 기간에 해당하는 이슈가 없습니다. 기간을 넓혀보세요.</p>
+            <p v-else-if="category !== '전체'">‘{{ category }}’ 카테고리에 표시할 이슈가 없습니다. 다른 카테고리를 선택해보세요.</p>
             <p v-else>아직 수집된 이슈가 없습니다. 잠시 후 다시 확인해주세요.</p>
           </div>
 
