@@ -1,0 +1,745 @@
+{
+  "id": null,
+  "uid": "news-write-read-compact",
+  "title": "News Write/Read Service",
+  "description": "쓰기(Kafka 소비 -> MySQL 저장/갱신) + 읽기(캐시) 파이프라인 핵심 지표만 압축",
+  "tags": ["news-platform", "compact"],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 16,
+  "style": "dark",
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Kafka Consumer Lag (news-write-service)",
+      "description": "0에 가까워야 정상. 계속 쌓이면 컨슈머가 프로듀서 속도를 못 따라가고 있다는 뜻.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(kafka_consumergroup_lag{consumergroup=\"news-write-service\"}) by (topic)",
+          "legendFormat": "{{topic}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 2,
+      "title": "Kafka 유입 vs 처리 (건/분)",
+      "description": "in = 토픽에 새로 들어오는 속도, consumed = 우리 컨슈머가 처리하는 속도. 두 선이 비슷하게 움직여야 정상.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "lines": true,
+      "fill": 0,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_topic_partition_current_offset{topic=~\"news[.]article[.]raw|news[.]clustering[.]completed\"}[5m])) by (topic) * 60",
+          "legendFormat": "{{topic}} in",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(kafka_consumergroup_current_offset{consumergroup=\"news-write-service\"}[5m])) by (topic) * 60",
+          "legendFormat": "{{topic}} consumed",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 4,
+      "title": "MySQL 쿼리 종류별 처리량 (건/초)",
+      "description": "읽기(select) vs 쓰기(insert/update/delete) 비율 — 캐시가 잘 동작하면 select가 상대적으로 낮게 유지돼야 함.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "stack": true,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(mysql_global_status_commands_total{command=~\"select|insert|update|delete\"}[5m])) by (command)",
+          "legendFormat": "{{command}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 8,
+      "title": "MySQL 락 대기 (InnoDB row lock)",
+      "description": "row lock waits=락 걸려서 기다린 횟수, avg wait=평균 대기시간(ms). 둘 다 0 근처가 정상. InnoDB는 행 단위 락이라 흔하지 않아야 함.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        { "expr": "mysql_global_status_innodb_row_lock_time_avg", "legendFormat": "avg wait(ms)", "refId": "A" },
+        { "expr": "mysql_global_status_innodb_row_lock_waits", "legendFormat": "row lock waits(누적건수)", "refId": "B" }
+      ],
+      "seriesOverrides": [{ "alias": "row lock waits(누적건수)", "yaxis": 2 }],
+      "yaxes": [
+        { "format": "ms", "min": "0", "show": true },
+        { "format": "short", "min": "0", "show": true }
+      ],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 7,
+      "title": "HikariCP 커넥션 풀",
+      "description": "active=쓰는 중, idle=놀고 있음, pending=커넥션 못 구해서 대기 중(0이어야 정상, 계속 쌓이면 풀 크기 부족).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        { "expr": "hikaricp_connections_active", "legendFormat": "active - {{pool}} - {{instance}}", "refId": "A" },
+        { "expr": "hikaricp_connections_idle", "legendFormat": "idle - {{pool}} - {{instance}}", "refId": "B" },
+        { "expr": "hikaricp_connections_pending", "legendFormat": "pending(대기) - {{pool}} - {{instance}}", "refId": "C" },
+        { "expr": "hikaricp_connections_max", "legendFormat": "max(설정값) - {{pool}} - {{instance}}", "refId": "D" }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 6,
+      "title": "읽기 API 응답시간 (평균/p50/p95/p99, /api/issues|search)",
+      "description": "평균만 보면 캐시 히트 다수에 가려서 꼬리 지연이 안 보임 - p50(중앙값)/p95/p99을 같이 봐야 저하가 얼마나 넓게 퍼졌는지(소수 이상치 vs 전반적 저하) 구분됨.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(http_server_requests_seconds_sum{uri=~\"/api/(issues|search).*\"}[5m]) / rate(http_server_requests_seconds_count{uri=~\"/api/(issues|search).*\"}[5m])",
+          "legendFormat": "avg - {{uri}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{uri=~\"/api/(issues|search).*\"}[5m])) by (le, uri))",
+          "legendFormat": "p50 - {{uri}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri=~\"/api/(issues|search).*\"}[5m])) by (le, uri))",
+          "legendFormat": "p95 - {{uri}}",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{uri=~\"/api/(issues|search).*\"}[5m])) by (le, uri))",
+          "legendFormat": "p99 - {{uri}}",
+          "refId": "D"
+        }
+      ],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 5,
+      "title": "Redis 캐시(L2) 히트율",
+      "description": "L2 캐시가 실제로 DB 부하를 줄여주고 있는지. 낮으면 TTL/캐싱 대상 재검토 필요.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "lines": true,
+      "fill": 2,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(redis_keyspace_hits_total[5m])) / (sum(rate(redis_keyspace_hits_total[5m])) + sum(rate(redis_keyspace_misses_total[5m])))",
+          "legendFormat": "hit ratio",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 10,
+      "title": "캐시별 히트율 (issueFeed / issueDetail)",
+      "description": "Spring Cache 추상화가 캐시 이름별로 노출하는 히트율. 캐시가 새로 추가돼도 쿼리 수정 없이 자동으로 잡힘.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "lines": true,
+      "fill": 2,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(cache_gets_total{result=\"hit\"}[5m])) by (cache) / sum(rate(cache_gets_total[5m])) by (cache)",
+          "legendFormat": "{{cache}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 9,
+      "title": "Redis 메모리 사용률 / Eviction",
+      "description": "memory used ratio=maxmemory 대비 사용률(allkeys-lru 정책이라 100% 넘겨도 죽진 않지만 evictions가 늘어남). evictions=밀려서 강제로 지워진 키 수(초당).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes / redis_memory_max_bytes",
+          "legendFormat": "memory used ratio",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(redis_evicted_keys_total[5m])",
+          "legendFormat": "evictions/sec",
+          "refId": "B"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "evictions/sec", "yaxis": 2 }],
+      "yaxes": [
+        { "format": "percentunit", "min": "0", "show": true },
+        { "format": "short", "min": "0", "show": true }
+      ],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 11,
+      "title": "MySQL 슬로우 쿼리 발생 건수 (1단계: 있었는지)",
+      "description": "long_query_time(기본 10초) 넘긴 쿼리 누적 발생 횟수. 늘어나기 시작하면 아래 Digest 패널에서 원인 확인.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "bars": true,
+      "lines": false,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "increase(mysql_global_status_slow_queries[5m])",
+          "legendFormat": "slow queries (5분당)",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 12,
+      "title": "MySQL 쿼리 Digest Top 10 - 평균 처리시간 (2단계: 어떤 SQL인지, 사용자 트래픽만)",
+      "description": "performance_schema 기반. digest_text에 실제 SQL 패턴(파라미터는 ? 마스킹)이 그대로 나옴 — 로그 파일 안 열어봐도 여기서 바로 원인 쿼리 확인. LOAD DATA INFILE(백필용 대량 적재)은 사용자 트래픽이 아니라서 제외.",
+      "type": "table",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 48 },
+      "targets": [
+        {
+          "expr": "topk(10, mysql_perf_schema_events_statements_seconds_total{digest_text!~\"LOAD DATA.*\"} / clamp_min(mysql_perf_schema_events_statements_total{digest_text!~\"LOAD DATA.*\"}, 1))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true },
+            "renameByName": { "Value": "avg_time_sec", "digest_text": "query", "schema": "db" },
+            "indexByName": { "digest_text": 0, "schema": 1, "Value": 2 }
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Kafka DLQ 유입 건수 (5분 구간)",
+      "description": "재시도 다 실패해서 DLQ(-dlt 토픽)로 빠진 메시지 건수(최근 5분 구간 기준). 0이 정상, 올라가면 그 토픽 처리 중 뭔가 계속 깨지고 있다는 뜻.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 57 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(increase(kafka_topic_partition_current_offset{topic=~\".*-dlt\"}[5m])) by (topic)",
+          "legendFormat": "{{topic}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 15,
+      "title": "InnoDB 버퍼풀 사용률",
+      "description": "설정된 버퍼풀 크기 대비 실제 데이터가 채워진 비율. 계속 100%에 가까우면 버퍼풀이 부족해서 캐싱 못 하고 디스크 I/O가 늘어나고 있다는 뜻 - 늘리는 걸 고려.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 65 },
+      "lines": true,
+      "fill": 2,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "mysql_global_status_buffer_pool_pages{state=\"data\"} / ignoring(state) sum without(state) (mysql_global_status_buffer_pool_pages)",
+          "legendFormat": "usage ratio",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 16,
+      "title": "MySQL 컨테이너 메모리 사용량",
+      "description": "innodb_buffer_pool_bytes_data = 버퍼풀 안에서 실제 데이터가 차지하는 바이트. 컨테이너 mem_limit(현재 2GB)에 근접하면 OOM 위험 - docker stats로도 같이 확인 필요(이 지표는 MySQL 내부 관점이라 커넥션 버퍼 등 그 외 오버헤드는 안 잡힘).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 65 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "mysql_global_status_innodb_buffer_pool_bytes_data",
+          "legendFormat": "buffer pool bytes used",
+          "refId": "A"
+        },
+        {
+          "expr": "mysql_global_variables_innodb_buffer_pool_size",
+          "legendFormat": "buffer pool size(설정값)",
+          "refId": "B"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "buffer pool size(설정값)", "dashes": true, "linewidth": 1 }],
+      "yaxes": [{ "format": "bytes", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 17,
+      "title": "DB 커넥션 획득 vs 사용 시간 (CPU 바운드 vs IO 바운드 판별용)",
+      "description": "acquire = 풀에서 커넥션 뽑아오는 데 걸린 시간(짧아야 정상, 길면 풀 부족/경합). usage = 커넥션 하나 붙잡고 쿼리 실행하는 데 걸린 시간(=DB 왕복시간에 가까움). CPU는 안 남는데 처리량이 안 나올 때, acquire는 짧고 usage만 크면 CPU가 아니라 DB 왕복(IO) 때문이라는 뜻.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 73 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(hikaricp_connections_acquire_seconds_sum[1m]) / rate(hikaricp_connections_acquire_seconds_count[1m])",
+          "legendFormat": "acquire avg - {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(hikaricp_connections_usage_seconds_sum[1m]) / rate(hikaricp_connections_usage_seconds_count[1m])",
+          "legendFormat": "usage avg - {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 18,
+      "title": "JVM 스레드 상태 분포",
+      "description": "runnable=실제 CPU에서 실행 중, waiting/timed-waiting=뭔가(IO, 락, 큐 등) 기다리는 중, blocked=락 대기. JVM 전체 스레드 합산이라 컨슈머 스레드만 콕 집은 값은 아니지만, waiting류가 대부분이면 CPU보다 대기(IO 등)가 병목이라는 보조 근거가 됨.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 73 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "stack": true,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(jvm_threads_states_threads) by (state)",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 19,
+      "title": "Kafka 브로커 메모리 사용률",
+      "description": "cAdvisor 기준 working_set(=OOM 판단 시 실제로 보는 값, 페이지 캐시 중 회수 어려운 부분 포함) / 컨테이너 mem_limit(1GB). 100%에 가까우면 OOM으로 재시작될 수 있음 - 8000msg/s 스트레스 테스트 때 kafka-1이 이래서 재시작됐음.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 81 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{name=~\"news-kafka-[0-9]\"} / container_spec_memory_limit_bytes{name=~\"news-kafka-[0-9]\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 20,
+      "title": "컨테이너별 메모리 사용률 (전체, mem_limit 대비 %)",
+      "description": "cAdvisor working_set / 컨테이너별 설정된 mem_limit. 컨테이너마다 한도가 다 달라서(mysql 2GB, kafka 1GB, exporter 64m 등) 절대값(byte)이 아니라 각자 한도 대비 비율로 봐야 '위험한 컨테이너'가 바로 보임. 100%에 가까우면 OOM 재시작 위험.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 81 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{name=~\"news-.+\"} / container_spec_memory_limit_bytes{name=~\"news-.+\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 21,
+      "title": "메시지 처리 시간 (평균/p50/p95/p99, 컨슈머별)",
+      "description": "@Timed로 측정한 컨슈머 메시지/배치 1건 전체 처리 시간(JSON 파싱 + DB 저장 등 다 포함). article-ingest는 배치 단위, clustering-completed는 메시지 단위. p50/p95/p99으로 저하 범위 구분.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 89 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(message_processing_duration_seconds_sum[5m])) by (consumer) / sum(rate(message_processing_duration_seconds_count[5m])) by (consumer)",
+          "legendFormat": "avg - {{consumer}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(message_processing_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p50 - {{consumer}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(message_processing_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p95 - {{consumer}}",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(message_processing_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p99 - {{consumer}}",
+          "refId": "D"
+        }
+      ],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 22,
+      "title": "DB 벌크 upsert 처리 시간 (평균/p50/p95/p99)",
+      "description": "@Timed로 측정한 ArticleCommandService.saveAll()만의 순수 DB 왕복 시간 - 21번 패널(전체)에서 이 값을 빼면 JSON 파싱 등 나머지 구간 시간이 나옴. HikariCP usage 지표랑 교차검증용.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 89 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(db_write_duration_seconds_sum[5m])) by (operation) / sum(rate(db_write_duration_seconds_count[5m])) by (operation)",
+          "legendFormat": "avg - {{operation}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(db_write_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "p50 - {{operation}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(db_write_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "p95 - {{operation}}",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(db_write_duration_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "p99 - {{operation}}",
+          "refId": "D"
+        }
+      ],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 23,
+      "title": "JVM 힙 메모리 사용량",
+      "description": "Eden/Survivor/Tenured 영역별 사용량(실선) vs 최대치(점선). Tenured가 계속 최대치에 붙어있으면 Full GC가 잦아지고 있다는 뜻.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 97 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{area=\"heap\"}",
+          "legendFormat": "used - {{id}} ({{instance}})",
+          "refId": "A"
+        },
+        {
+          "expr": "jvm_memory_max_bytes{area=\"heap\"}",
+          "legendFormat": "max - {{id}} ({{instance}})",
+          "refId": "B"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "/^max/", "dashes": true, "linewidth": 1 }],
+      "yaxes": [{ "format": "bytes", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 24,
+      "title": "GC 일시정지 시간",
+      "description": "minor GC(Young)는 자주 짧게, major GC(Full)는 드물게 나와야 정상. major GC가 잦아지거나 pause time이 길어지면 힙 부족 신호.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 97 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_sum[2m])",
+          "legendFormat": "{{action}} ({{instance}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 25,
+      "title": "CPU 사용률 (프로세스 vs 시스템 전체)",
+      "description": "process=이 JVM 프로세스만의 CPU 사용률, system=컨테이너/호스트 전체 CPU 사용률. process가 system보다 훨씬 낮은데 응답이 느리면 CPU가 아니라 다른 병목(IO 등)일 가능성이 큼.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 105 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "process_cpu_usage",
+          "legendFormat": "process - {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "system_cpu_usage",
+          "legendFormat": "system - {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "max": "1", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 26,
+      "title": "InnoDB 버퍼풀 캐시 미스율",
+      "description": "buffer_pool_reads(캐시 미스 -> 디스크에서 페이지 읽음) / buffer_pool_read_requests(논리 읽기 요청 총량). Redis 히트율 패널과 같은 개념 - 낮을수록 좋음. 올라가기 시작하면 인덱스(특히 link 유니크 인덱스)가 버퍼풀에 못 들어가고 있다는 신호.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 113 },
+      "lines": true,
+      "fill": 2,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(mysql_global_status_innodb_buffer_pool_reads[5m]) / rate(mysql_global_status_innodb_buffer_pool_read_requests[5m])",
+          "legendFormat": "cache miss ratio",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percentunit", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 27,
+      "title": "MySQL 실제 물리 디스크 I/O (읽기/쓰기 건수)",
+      "description": "innodb_data_reads/writes - InnoDB가 실제로 디스크에 읽고 쓴 횟수(초당). 캐시 미스율 패널과 같이 봐서, 미스율이 오를 때 실제 디스크 I/O도 같이 느는지 교차 확인용.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 113 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "rate(mysql_global_status_innodb_data_reads[5m])",
+          "legendFormat": "reads/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(mysql_global_status_innodb_data_writes[5m])",
+          "legendFormat": "writes/s",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [{ "format": "short", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 28,
+      "title": "컨테이너별 CPU 사용률 (전체, 코어 기준)",
+      "description": "cAdvisor 기준 컨테이너별 CPU 사용량 - 호스트 코어 수(4코어=400%)만큼 쓸 수 있음. 메모리 패널은 있는데 CPU 패널이 빠져있었음(부하테스트 때 DB CPU를 사후 수동 조회로만 확인했던 문제) - 특히 MySQL/Kafka 브로커가 부하 증가 시 코어를 얼마나 쓰는지 상시 확인용.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 121 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"news-.+\"}[1m])) by (name) * 100",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{ "format": "percent", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 29,
+      "title": "Kafka 커밋(acknowledge) 왕복 시간 (평균/p50/p95/p99, 컨슈머별)",
+      "description": "message.processing.duration(전체) - db.write.duration(DB만) 사이에 설명 안 되던 구간(2026-09-04 12:01, p99만 47ms 차이) 확인용. consumer 태그로 그룹화 - clustering-completed 등 다른 컨슈머에도 같은 타이머 추가하면 이 패널에 자동으로 같이 잡힘(대시보드 수정 불필요).",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 129 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_ack_duration_seconds_sum[5m])) by (consumer) / sum(rate(kafka_ack_duration_seconds_count[5m])) by (consumer)",
+          "legendFormat": "avg - {{consumer}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p50 - {{consumer}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p95 - {{consumer}}",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(kafka_ack_duration_seconds_bucket[5m])) by (le, consumer))",
+          "legendFormat": "p99 - {{consumer}}",
+          "refId": "D"
+        }
+      ],
+      "seriesOverrides": [
+        { "alias": "/^p50/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p95/", "linewidth": 1, "dashes": true },
+        { "alias": "/^p99/", "linewidth": 2, "dashes": true }
+      ],
+      "yaxes": [{ "format": "s", "min": "0", "show": true }, { "format": "short", "show": false }],
+      "xaxis": { "mode": "time", "show": true }
+    },
+    {
+      "id": 30,
+      "title": "Redis 커넥션 수",
+      "description": "connected clients=현재 붙어있는 커넥션 수(Lettuce 풀 + exporter 자체 연결 포함), maxclients=redis.conf 상한(기본 10000). rejected/sec>0이면 maxclients 초과로 신규 연결이 거부되고 있다는 뜻 - 풀 사이즈나 maxclients 재검토 필요.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 137 },
+      "lines": true,
+      "fill": 1,
+      "linewidth": 2,
+      "nullPointMode": "connected",
+      "targets": [
+        {
+          "expr": "redis_connected_clients",
+          "legendFormat": "connected clients",
+          "refId": "A"
+        },
+        {
+          "expr": "redis_blocked_clients",
+          "legendFormat": "blocked clients",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(redis_rejected_connections_total[5m])",
+          "legendFormat": "rejected connections/sec",
+          "refId": "C"
+        }
+      ],
+      "seriesOverrides": [{ "alias": "rejected connections/sec", "yaxis": 2 }],
+      "yaxes": [
+        { "format": "short", "min": "0", "show": true },
+        { "format": "short", "min": "0", "show": true }
+      ],
+      "xaxis": { "mode": "time", "show": true }
+    }
+  ]
+}

@@ -1,0 +1,337 @@
+{
+  "uid": "de-pipeline",
+  "title": "DE 파이프라인",
+  "tags": [
+    "de",
+    "pipeline"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "적재 지연",
+      "description": "레이크에 들어온 가장 최근 기사가 몇 초 전에 발행된 것인지. 전 구간 신선도 목표(S15P21E105-73)를 이 값으로 판정한다. 15분마다 갱신된다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_ingest_lag_seconds",
+          "legendFormat": "지연",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "15분 적재량",
+      "description": "Kafka 에서 bronze 로 들어온 건수. 값이 0 으로 이어지면 크롤러나 Kafka 쪽을 본다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_bronze_ingested_rows",
+          "legendFormat": "건수",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "silver 손실",
+      "description": "정형화에서 빠진 건수. 본문이 없거나 형식이 맞지 않는 것과, publishers.py 에 없는 언론사를 나눠 쌓는다. 미등록 언론사가 늘면 매핑을 추가해야 한다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_silver_dropped_rows",
+          "legendFormat": "본문 없음·형식 불량",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(pipeline_silver_unknown_publisher_rows)",
+          "legendFormat": "미등록 언론사",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DS2 연결 비율",
+      "description": "관점 값이 붙은 기사의 몫. DS2 가 본 창과 gold 가 쓴 창이 어긋나면 0 에 가까워진다. 2026-09-10 에 창이 섞여 48% 까지 떨어진 일이 있다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_ds2_matched_rows / pipeline_gold_articles",
+          "legendFormat": "붙은 비율",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "gold 규모",
+      "description": "BE 로 발행할 이슈와 기사 수.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_issues",
+          "legendFormat": "이슈",
+          "refId": "A"
+        },
+        {
+          "expr": "pipeline_gold_articles",
+          "legendFormat": "기사",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "뒤처진 날짜",
+      "description": "silver 가 갱신된 날짜는 매번 뒤처진 것으로 잡혀 다시 내려간다. 15분마다 실시간 기사가 들어오므로 평소 두세 날짜가 정상이고 0 은 silver 가 아예 안 바뀐 때뿐이다. 값이 갑자기 커지면 내려주기가 밀렸거나 RSS 가 옛 기사를 무더기로 준 것이다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_ds_input_stale_days",
+          "legendFormat": "날짜 수",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "지금 쓰는 DS 창",
+      "description": "gold 가 마지막으로 읽은 DS 산출물 창. DS2 결과 파일 이름과 같아야 관점 값이 붙는다.",
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 20,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_window",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "name"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "관점 분석 실패율",
+      "description": "관점 라벨이 \"기타\"거나 비어 있는 기사 비율. DS2 가 관점을 못 뽑고 흘려보낸 몫이다. 2026-09-21 기준 0.71 — 열 건 중 일곱 건이 실패다. 내려가야 좋다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_viewpoint_other_ratio",
+          "legendFormat": "기타·빈 라벨",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "성향 중립 쏠림",
+      "description": "관점이 실제로 붙은 기사 중 성향이 중립인 비율. 분석이 실패하면 중립을 돌려주므로 실패가 중립으로 위장된다. 2026-09-21 기준 0.84. 관점 실패율과 같이 움직이면 진짜 중립이 아니라 실패다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_stance_neutral_ratio",
+          "legendFormat": "중립 비율",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DS2 요약 결측",
+      "description": "DS2 가 공통 사실 브리핑을 안 줘서 대표 기사 본문 앞부분으로 채운 비율. 2026-09-21 기준 0.28. 1 에 가까워지면 브리핑이 사실상 기사 발췌다.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_briefing_fallback_ratio",
+          "legendFormat": "폴백으로 채운 비율",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "가장 큰 이슈",
+      "description": "한 이슈에 묶인 기사 수의 최댓값. 갑자기 뛰면 서로 다른 사건이 한 덩어리로 뭉쳤다는 신호다. 평소 40~160 사이.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_gold_issue_size_max",
+          "legendFormat": "기사 수",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "어제 번호 이어받음",
+      "description": "발행 직전에 어제 쓰던 이슈 번호를 되찾은 개수 (S15P21E105-129). 0 이 계속 나오면 이어붙이기가 죽은 것이고, 그러면 같은 사건이 날마다 새 이슈로 BE 에 쌓인다. 그것 말고는 알아챌 길이 없다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "pipeline_publish_carried_ids",
+          "legendFormat": "이어받은 이슈 수",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

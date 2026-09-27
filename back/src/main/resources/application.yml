@@ -1,0 +1,89 @@
+server:
+  tomcat:
+    uri-encoding: UTF-8   # 없으면 쿼리 파라미터에 한글 등 비ASCII 오면 Tomcat이 디코딩 실패시킴(400)
+  shutdown: graceful   # SIGTERM 받으면 새 요청은 안 받고, 처리 중이던 요청은 끝까지 마치고 종료 (블루그린 배포용)
+
+spring:
+  application:
+    name: news-write-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s   # graceful shutdown 최대 대기 시간 — 이거 넘으면 강제 종료
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
+    username: news
+    password: news1234
+
+  jpa:
+    hibernate:
+      ddl-auto: update   # 로컬 개발용 임시 설정
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 50   # dirty checking으로 발생하는 UPDATE/INSERT를 50개씩 묶어서 전송
+          # JDBC URL의 serverTimezone=Asia/Seoul은 순수 JdbcTemplate 쓰기 경로에만 적용되고
+          # Hibernate 자체 타임존 해석에는 안 먹힘 - 컨테이너 JVM 기본 타임존(UTC)을 그대로 써서
+          # DATETIME(naive) 컬럼을 UTC로 잘못 해석해 실제로는 KST인 값에 Z(UTC) 태그를 붙이는
+          # 버그가 있었음. 명시적으로 지정해서 Hibernate 경로도 JdbcTemplate 경로와 동일하게 맞춤.
+          time_zone: Asia/Seoul
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all   # idempotence 기본 활성화라 명시 안 해도 사실상 all이지만, 3-브로커+min-insync=2 구성이라 명시적으로 고정
+    listener:
+      ack-mode: manual_immediate
+
+news:
+  kafka:
+    topic:
+      article-ingest: news.article.raw          # 크롤러 -> 우리: 원본 기사 저장 요청
+      clustering-completed: news.clustering.completed  # DE -> 우리: 클러스터링 완료, clusterId 벌크 반영
+      search-executed: news.search.executed     # 우리(검색 API) -> 우리(인기 검색어 집계 컨슈머): 검색 실행 이벤트
+  # article-ingest(배치 컨슈머)만 별도 HikariCP 풀로 분리 - Bulkhead 패턴.
+  # 커넥션을 오래 물고 있는 배치 워크로드가 공용 풀(기본 10개)을 잠식해서 읽기 API/다른 컨슈머가
+  # 굶는 걸 막기 위함. MySQL max_connections=151에 여유 충분(실측 22개 사용 중)해서 총량 증가는 안전.
+  datasource:
+    article-ingest:
+      url: jdbc:mysql://localhost:3306/news?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true
+      username: news
+      password: news1234
+      hikari:
+        pool-name: ArticleIngestPool
+        maximum-pool-size: 6   # 파티션 증설(3->6) 대비 여유 있게 - 지금 파티션 3개론 최대 3개면 충분
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      # 기본값은 sum/count(평균)만 나가서 p99를 못 뽑음 - 읽기 API 부하테스트 때
+      # histogram_quantile()로 p50/p95/p99 계산하려고 http 요청 타이머에만 버킷 활성화.
+      # message.processing.duration/db.write.duration도 같은 이유로 추가 - 쓰기 쪽 처리량 대비
+      # p99도 나중에 같은 방식으로 비교하려고.
+      percentiles-histogram:
+        http.server.requests: true
+        message.processing.duration: true
+        db.write.duration: true
+      # 버킷 경계를 얇게(10~500ms 구간 촘촘히) 잡아서 캐시 히트(수 ms) vs 미스(DB 왕복) 구간을 구분되게 함.
+      slo:
+        http.server.requests: 10ms,25ms,50ms,100ms,200ms,500ms,1s,2s
+        message.processing.duration: 50ms,100ms,200ms,500ms,1s,2s,5s
+        db.write.duration: 10ms,50ms,100ms,200ms,500ms,1s
